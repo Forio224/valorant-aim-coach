@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\" src/sensing_spike_runner.py)",
+      "Bash(mv \"src/sensing_spike_runner.py`\" src/sensing_spike_runner.py)",
+      "Bash(py -0)",
+      "Bash(nvidia-smi --query-gpu=name,memory.total --format=csv)",
+      "Bash(ls venv/Scripts/python.exe)",
+      "Bash(ls .venv/Scripts/python.exe)",
+      "Bash(./.venv/Scripts/python.exe -c ' *)",
+      "Bash(./.venv/Scripts/python.exe prepare_dataset.py)"
+    ]
+  }
+}

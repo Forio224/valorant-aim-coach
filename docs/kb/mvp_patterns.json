@@ -1,0 +1,90 @@
+{
+  "schema_version": "1.0",
+  "patterns": {
+    "low_crosshair_placement": {
+      "title": "Низкое положение прицела",
+      "problem": "Ваш прицел систематически находится ниже уровня головы врага.",
+      "cause": "Привычка смотреть в пол или неправильная осанка/настройка монитора.",
+      "criticality": "FOUNDATIONAL",
+      "metric_source": "placement_offset_y_hu",
+      "min_quality_score": "MEDIUM",
+      "drills": [
+        {"name": "Headshot Precision", "tool": "AimLabs", "focus": "Vertical alignment"},
+        {"name": "Sighting Drills", "tool": "In-game", "focus": "Corner clearing"}
+      ],
+      "correction_logic": {
+        "target_value": 0.0,
+        "threshold_hu": 0.2,
+        "description": "Снизить вертикальный офсет до < 0.2 HU"
+      }
+    },
+    "systematic_overshoot": {
+      "title": "Систематический перелёт (Overshoot)",
+      "problem": "Вы часто проносите прицел мимо цели, что заставляет вас делать повторную корректировку.",
+      "cause": "Избыточная чувствительность мыши или недостаток контроля микро-движений.",
+      "criticality": "EXECUTION",
+      "metric_source": "overshoot_distance_hu",
+      "min_quality_score": "MEDIUM",
+      "drills": [
+        {"name": "Precision Flick", "tool": "AimLabs", "focus": "Stopping power"},
+        {"name": "Micro-correction", "tool": "Kovaaks", "focus": "Accuracy"}
+      ],
+      "correction_logic": {
+        "target_value": 0.0,
+        "threshold_hu": 0.1,
+        "description": "Минимизировать дистанцию перелёта до < 0.1 HU"
+      }
+    },
+    "slow_aim_acquisition": {
+      "title": "Медленный захват цели",
+      "problem": "Слишком большой промежуток времени между обнаружением врага и наведением прицела на него.",
+      "cause": "Недостаточная скорость фликов или медленное принятие решения о направлении движения.",
+      "criticality": "EXECUTION",
+      "metric_source": "aim_acquisition_ms",
+      "min_quality_score": "MEDIUM",
+      "drills": [
+        {"name": "Speed Clicking", "tool": "AimLabs", "focus": "Speed"},
+        {"name": "Dynamic Clicking", "tool": "Kovaaks", "focus": "Acquisition"}
+      ],
+      "correction_logic": {
+        "target_value": 200,
+        "threshold_ms": 300,
+        "description": "Снизить время захвата цели до < 300 мс"
+      }
+    },
+    "slow_decision_delay": {
+      "title": "Задержка принятия решения",
+      "problem": "Вы наводитесь на цель быстро, но медлите с нажатием кнопки выстрела.",
+      "cause": "Психологический барьер, неуверенность в попадании или плохая координация «глаз-палец».",
+      "criticality": "COGNITIVE",
+      "metric_source": "decision_delay_ms",
+      "min_quality_score": "HIGH",
+      "drills": [
+        {"name": "Reaction Timing", "tool": "Human Benchmark", "focus": "Click speed"},
+        {"name": "Confidence Training", "tool": "In-game", "focus": "Decision speed"}
+      ],
+      "correction_logic": {
+        "target_value": 150,
+        "threshold_ms": 250,
+        "description": "Снизить задержку выстрела после наведения до < 250 мс"
+      }
+    },
+    "slow_visual_reaction": {
+      "title": "Медленная визуальная реакция",
+      "problem": "Вашему мозгу требуется слишком много времени, чтобы осознать появление врага на экране.",
+      "cause": "Низкий уровень концентрации или общая скорость когнитивной обработки.",
+      "criticality": "COGNITIVE",
+      "metric_source": "visual_reaction_ms",
+      "min_quality_score": "HIGH",
+      "drills": [
+        {"name": "Reaction Training", "tool": "AimLabs", "focus": "Visual stimulus"},
+        {"name": "Focus Drills", "tool": "In-game", "focus": "Attentiveness"}
+      ],
+      "correction_logic": {
+        "target_value": 180,
+        "threshold_ms": 220,
+        "description": "Снизить время первой реакции до < 220 мс"
+      }
+    }
+  }
+}

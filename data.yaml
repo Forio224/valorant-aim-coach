@@ -1,0 +1,8 @@
+# YOLO dataset config — Valorant enemy head detection
+# Generated from CVAT annotations via prepare_dataset.py
+path: D:/da/проект/dataset
+train: images/train
+val: images/val
+
+names:
+  0: head

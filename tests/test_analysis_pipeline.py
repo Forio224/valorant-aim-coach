@@ -1,0 +1,250 @@
+# -*- coding: utf-8 -*-
+"""Stage B3: продуктовый пайплайн upload → YOLO → движок → коуч.
+
+Детектор и коуч инжектируются: тесты гоняют синтетические головы (та же
+сцена, что в test_evidence_frames: флик с X-перелётом + hold ниже линии)
+без torch и без API. Контракт:
+  - сэмплы паспорта = ближайшая к прицелу голова на каждом кадре;
+  - эпизоды = segment_episodes по ВСЕМ головам (yolo-путь без identity);
+  - статусы DETECTING -> MEASURING -> COACHING в этом порядке;
+  - профиль обновляется идемпотентно и попадает в отчёт;
+  - коуч получает <= coach_max_images кадров; его провал -> coach_failed,
+    но evidence-отчёт остаётся (частичный результат).
+"""
+from pathlib import Path
+from typing import Dict, List, Optional
+
+import cv2
+import numpy as np
+import pytest
+
+from aim_metrics import Head, pick_target, sample_frame
+from backend.services.analysis_pipeline import (STATUS_COACHING,
+                                                STATUS_DETECTING,
+                                                STATUS_MEASURING,
+                                                PipelineConfig, run_pipeline)
+from coach.schema import CoachReport, Drill, FindingExplained
+from engine.clip_context import context_for_video
+from engine.episodes import segment_episodes
+from engine.report import build_report
+
+W, H_SCREEN, FPS = 320, 240, 60.0
+HEAD_H = 10.0
+N_FRAMES = 200
+
+
+# ---------------------------------------------------------------- фикстуры
+
+def _write_video(path: Path) -> None:
+    writer = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"),
+                             FPS, (W, H_SCREEN))
+    assert writer.isOpened(), "cv2 не смог создать синтетическое видео"
+    for _ in range(N_FRAMES):
+        writer.write(np.full((H_SCREEN, W, 3), 128, dtype=np.uint8))
+    writer.release()
+
+
+@pytest.fixture
+def video(tmp_path) -> Path:
+    path = tmp_path / "clip.mp4"
+    _write_video(path)
+    return path
+
+
+def synthetic_heads() -> Dict[int, List[Head]]:
+    """Флик с X-перелётом на кадре 6 + hold, рождённый на 1 HU выше прицела."""
+    frames: Dict[int, List[Head]] = {}
+    dx = [12, 10, 8, 6, 4, 2, -1.0, -1.1, -0.6, -0.2, 0.0] + [0.1] * 9
+    for i, d in enumerate(dx):
+        frames.setdefault(i, []).append(
+            Head(W / 2 + d * HEAD_H, H_SCREEN / 2, height_px=HEAD_H))
+    for i in range(100, 130):
+        frames.setdefault(i, []).append(
+            Head(W / 2, H_SCREEN / 2 - HEAD_H, height_px=HEAD_H))
+    return frames
+
+
+class FakeDetector:
+    """Подменяет YOLO: отдаёт заранее заданные головы по кадрам."""
+
+    def __init__(self, heads: Dict[int, List[Head]]):
+        self.heads = heads
+        self.calls: List[str] = []
+
+    def __call__(self, video_path: str) -> Dict[int, List[Head]]:
+        self.calls.append(str(video_path))
+        return self.heads
+
+
+def _valid_coach_for(report: dict) -> CoachReport:
+    """Минимальный CoachReport, проходящий groundedness-валидатор B2."""
+    finding = next(f for f in report["findings"] if f["evidence"])
+    entry = finding["evidence"][0]
+    frame = entry.get("frame", entry.get("frame_start"))
+    return CoachReport(
+        summary="Портрет игрока без чисел.",
+        findings_explained=[FindingExplained(
+            metric=finding["metric"],
+            explanation="Объяснение без чисел.",
+            evidence_frames=[frame],
+            confidence=finding["confidence"],
+        )],
+        drills=[Drill(
+            priority=1, name="Дрилл", platform="range", dose="10 минут",
+            target_metric=finding["metric"],
+            success_criterion="стабильность на линии головы",
+        )],
+        caveats=[],
+    )
+
+
+class FakeCoach:
+    """Подменяет CoachClient: отвечает валидным отчётом или падает."""
+
+    def __init__(self, fail: bool = False):
+        self.fail = fail
+        self.calls: List[dict] = []
+
+    def generate(self, evidence: dict, frame_paths, feedback=None):
+        self.calls.append({"evidence": evidence,
+                           "frames": [Path(p) for p in frame_paths],
+                           "feedback": feedback})
+        if self.fail:
+            raise RuntimeError("Claude API недоступен")
+        return _valid_coach_for(evidence)
+
+
+def _run(video, tmp_path, detector=None, coach=None, **overrides):
+    config = PipelineConfig(profile_dir=str(tmp_path / "profiles"),
+                            **overrides)
+    return run_pipeline(
+        str(video), "p1", clip_id="c1", config=config,
+        evidence_dir=str(tmp_path / "evidence"),
+        detector=detector if detector is not None
+        else FakeDetector(synthetic_heads()),
+        coach_client=coach if coach is not None else FakeCoach(),
+    )
+
+
+# ------------------------------------------------- числа == прямой прогон движка
+
+def test_report_matches_direct_engine_run(video, tmp_path):
+    heads = synthetic_heads()
+    result = _run(video, tmp_path)
+
+    ctx = context_for_video(str(video), player_id="p1", clip_id="c1")
+    crosshair = ctx.crosshair
+    samples = []
+    for frame_idx in sorted(heads):
+        target = pick_target(heads[frame_idx], crosshair)
+        if target is not None:
+            samples.append(sample_frame(frame_idx, target, crosshair))
+    expected = build_report(ctx, samples, segment_episodes(heads, ctx))
+
+    got = result.evidence_report
+    assert got["schema_version"] == expected["schema_version"]
+    assert got["episodes"] == expected["episodes"]
+    for got_f, exp_f in zip(got["findings"], expected["findings"]):
+        assert got_f["metric"] == exp_f["metric"]
+        assert got_f["values"] == exp_f["values"]
+        assert got_f["confidence"] == exp_f["confidence"]
+
+
+def test_detector_receives_video_path(video, tmp_path):
+    detector = FakeDetector(synthetic_heads())
+    _run(video, tmp_path, detector=detector)
+    assert detector.calls == [str(video)]
+
+
+# ------------------------------------------------------------------- статусы
+
+def test_statuses_emitted_in_pipeline_order(video, tmp_path):
+    statuses: List[str] = []
+    config = PipelineConfig(profile_dir=str(tmp_path / "profiles"))
+    run_pipeline(str(video), "p1", clip_id="c1", config=config,
+                 evidence_dir=str(tmp_path / "evidence"),
+                 detector=FakeDetector(synthetic_heads()),
+                 coach_client=FakeCoach(),
+                 on_status=statuses.append)
+    assert statuses == [STATUS_DETECTING, STATUS_MEASURING, STATUS_COACHING]
+
+
+# ------------------------------------------------------------------- профиль
+
+def test_profile_saved_and_included_in_report(video, tmp_path):
+    result = _run(video, tmp_path)
+    profile_path = tmp_path / "profiles" / "p1.json"
+    assert profile_path.is_file()
+    assert result.evidence_report["profile"]["clips"] == 1
+
+
+def test_profile_is_idempotent_per_clip_id(video, tmp_path):
+    _run(video, tmp_path)
+    result = _run(video, tmp_path)          # тот же clip_id -> перезапись
+    assert result.evidence_report["profile"]["clips"] == 1
+
+
+# ------------------------------------------------------------- кадры-улики
+
+def test_evidence_frames_written_to_dir(video, tmp_path):
+    result = _run(video, tmp_path)
+    assert result.evidence_frames, "улики должны быть отрендерены"
+    for path in result.evidence_frames:
+        p = Path(path)
+        assert p.is_file()
+        assert p.name.startswith("frame_") and p.suffix == ".jpg"
+
+
+# ----------------------------------------------------------------------- коуч
+
+def test_coach_success_returns_report_dict(video, tmp_path):
+    result = _run(video, tmp_path)
+    assert result.coach_failed is False
+    assert result.coach_errors == []
+    assert isinstance(result.coach_report, dict)
+    assert result.coach_report["summary"]
+
+
+def test_coach_gets_at_most_max_images_frames(video, tmp_path):
+    coach = FakeCoach()
+    result = _run(video, tmp_path, coach=coach, coach_max_images=2)
+    assert len(result.evidence_frames) > 2, "иначе кап нечем проверять"
+    assert len(coach.calls[0]["frames"]) == 2
+
+
+def test_coach_exception_degrades_to_partial_result(video, tmp_path):
+    result = _run(video, tmp_path, coach=FakeCoach(fail=True))
+    assert result.coach_failed is True
+    assert result.coach_report is None
+    assert result.coach_errors, "ошибку нельзя глотать"
+    assert result.evidence_report["findings"], "движок остаётся в результате"
+
+
+# ------------------------------------------------------------- пустой клип
+
+def test_empty_clip_completes_without_coach_crash(video, tmp_path):
+    result = _run(video, tmp_path, detector=FakeDetector({}))
+    assert result.evidence_report["clip"]["player_id"] == "p1"
+    assert result.evidence_frames == []
+
+
+def test_empty_clip_skips_coach_and_explains(video, tmp_path):
+    """Коуча не зовём на пустоту: нечего объяснять и незачем платить."""
+    coach = FakeCoach()
+    result = _run(video, tmp_path, detector=FakeDetector({}), coach=coach)
+    assert coach.calls == []
+    assert result.coach_failed is True
+    assert result.coach_report is None
+    assert any("голов" in err for err in result.coach_errors)
+
+
+# ------------------------------------------------------------- битый файл
+
+def test_unreadable_video_raises_human_error(tmp_path):
+    fake = tmp_path / "fake.mp4"
+    fake.write_bytes(b"this is not a video at all")
+    with pytest.raises(ValueError, match="повреждён|не видео"):
+        run_pipeline(str(fake), "p1", clip_id="c1",
+                     config=PipelineConfig(profile_dir=str(tmp_path / "p")),
+                     evidence_dir=str(tmp_path / "e"),
+                     detector=FakeDetector({}), coach_client=FakeCoach())

@@ -1,0 +1,198 @@
+import os
+import cv2
+import numpy as np
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import List, Tuple, Dict
+from dataclasses import dataclass
+
+# --- CONFIGURATION ---
+# These should eventually come from a config file or User profile
+SENSING_CONFIG = {
+    "enemy_highlight_color": "red",
+    "hsv_ranges": {
+        "red": [
+            {"lower": np.array([0, 120, 70]), "upper": np.array([10, 255, 255])},
+            {"lower": np.array([170, 120, 70]), "upper": np.array([180, 255, 255])}
+        ],
+        "yellow": [{"lower": np.array([20, 100, 100]), "upper": np.array([30, 255, 255])}],
+        "purple": [{"lower": np.array([140, 100, 100]), "upper": np.array([160, 255, 255])}]
+    },
+    "yolo_model_path": "yolov8n.pt",  # Using nano for spike speed
+    "confidence_threshold": 0.65,
+    "decision_boundary_hu": 0.5
+}
+
+@dataclass
+class FrameTruth:
+    frame_id: int
+    head_center: Tuple[float, float]
+    crosshair_pos: Tuple[float, float]
+    head_height: float
+
+class CVATParser:
+    """Parses CVAT XML exports to extract ground truth coordinates."""
+    @staticmethod
+    def parse_xml(xml_path: str) -> Dict[int, FrameTruth]:
+        tree = ET.parse(xml_path)
+        root = tree.getroot()
+        truth = {}
+
+        # In CVAT XML, we look for 'box' elements within 'image'
+        for image in root.findall('image'):
+            frame_id = int(image.get('name').split('_')[0]) # Simplified frame extraction
+
+            head_box = None
+            crosshair_box = None
+
+            for box in image.findall('box'):
+                label = box.get('label')
+                xtl = float(box.get('xtl'))
+                ytl = float(box.get('ytl'))
+                xbr = float(box.get('xbr'))
+                ybr = float(box.get('ybr'))
+
+                if label == 'head':
+                    head_box = (xtl, ytl, xbr, ybr)
+                elif label == 'crosshair':
+                    crosshair_box = (xtl, ytl, xbr, ybr)
+
+            if head_box and crosshair_box:
+                hx, hy, hwb, hwb_bottom = head_box
+                cx, cy, cwb, cwb_bottom = crosshair_box
+
+                truth[frame_id] = FrameTruth(
+                    frame_id=frame_id,
+                    head_center=((hx + hwb) / 2, (hy + hwb_bottom) / 2),
+                    crosshair_pos=((cx + cwb) / 2, (cy + cwb_bottom) / 2),
+                    head_height=(hwb_bottom - hy)
+                )
+        return truth
+
+class SensingSpikeRunner:
+    def __init__(self):
+        import torch
+        from ultralytics import YOLO
+
+        self.model = YOLO(SENSING_CONFIG["yolo_model_path"])
+        self.hsv_range = SENSING_CONFIG["hsv_ranges"][SENSING_CONFIG["enemy_highlight_color"]]
+
+    def get_roi_masks(self, frame):
+        """Applies HSV mask to find regions of interest."""
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+
+        for range_dict in self.hsv_range:
+            lower = range_dict["lower"]
+            upper = range_dict["upper"]
+            curr_mask = cv2.inRange(hsv, lower, upper)
+            mask = cv2.bitwise_or(mask, curr_mask)
+
+        return mask
+
+    def process_frame(self, frame, truth: FrameTruth):
+        """
+        The core Sensing Layer logic:
+        1. HSV Mask -> 2. ROI extraction -> 3. YOLO check
+        """
+        mask = self.get_roi_masks(frame)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        best_head_box = None
+        max_conf = 0
+
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            # Only run YOLO on the ROI (Sensing Layer Optimization)
+            roi = frame[y:y+h, x:x+w]
+            if roi.size == 0: continue
+
+            results = self.model(roi, verbose=False)[0]
+            for box in results.boxes:
+                conf = float(box.conf[0])
+                if conf > SENSING_CONFIG["confidence_threshold"] and conf > max_conf:
+                    # Map ROI coordinates back to full frame
+                    # Note: Simplified mapping for spike
+                    max_conf = conf
+                    best_head_box = (x, y, w, h)
+
+        if best_head_box:
+            hx, hy, hw, hh = best_head_box
+            return ((hx + hw) / 2, (hy + hh) / 2), hh, max_conf
+
+        return None, None, 0
+
+    def run_spike(self, video_path, truth_data: Dict[int, FrameTruth]):
+        cap = cv2.VideoCapture(video_path)
+        all_errors = []
+        correct_verdicts = 0
+        total_frames = 0
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret: break
+
+            frame_id = int(cap.get(cv2.CAP_PROP_POS_FRAMES))
+            if frame_id not in truth_data:
+                continue
+
+            total_frames += 1
+            truth = truth_data[frame_id]
+
+            # SENSING LAYER
+            auto_head, auto_height, conf = self.process_frame(frame, truth)
+
+            if auto_head and auto_height:
+                # Calculate HU Offset
+                # Offset_HU = (TrueCrosshair - AutoHead) / AutoHeadHeight
+                dx = truth.crosshair_pos[0] - auto_head[0]
+                dy = truth.crosshair_pos[1] - auto_head[1]
+
+                dist_px = np.sqrt(dx**2 + dy**2)
+                offset_hu = dist_px / auto_height
+
+                # Compare with Truth HU
+                true_dx = truth.crosshair_pos[0] - truth.head_center[0]
+                true_dy = truth.crosshair_pos[1] - truth.head_center[1]
+                true_dist_px = np.sqrt(true_dx**2 + true_dy**2)
+                true_offset_hu = true_dist_px / truth.head_height
+
+                all_errors.append(abs(offset_hu - true_offset_hu))
+            else:
+                # Penalty for missing detection
+                all_errors.append(1.0) # High error for missing head
+
+        cap.release()
+
+        mae = np.mean(all_errors) if all_errors else 1.0
+        return mae, total_frames
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--dataset", type=str, required=True, help="Path to dataset folder")
+    args = parser.parse_args()
+
+    runner = SensingSpikeRunner()
+
+    dataset_path = Path(args.dataset)
+    overall_mae = []
+
+    for category in ['control', 'target', 'adversarial']:
+        cat_path = dataset_path / category
+        if not cat_path.exists(): continue
+
+        print(f"\nProcessing category: {category}")
+        for video_file in cat_path.glob("*.mp4"):
+            xml_file = video_file.with_suffix(".xml")
+            if not xml_file.exists(): continue
+
+            truth = CVATParser.parse_xml(str(xml_file))
+            mae, frames = runner.run_spike(str(video_file), truth)
+            print(f"Clip {video_file.name} -> MAE: {mae:.4f} HU ({frames} frames)")
+            overall_mae.append(mae)
+
+    print(f"\n{'='*30}\nFINAL SPIKE RESULT\n{'='*30}")
+    print(f"Global MAE: {np.mean(overall_mae):.4f} HU")
+    print(f"Target MAE: {0.125} HU")
+    print(f"Verdict: {'✅ PASS' if np.mean(overall_mae) <= 0.125 else '❌ FAIL'}")

@@ -1,0 +1,50 @@
+# === Секреты (НИКОГДА не коммитить) ===
+.env
+.env.*
+!.env.example
+
+# === Python-окружение ===
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# === Frontend ===
+frontend/node_modules/
+frontend/build/
+frontend/.env
+npm-debug.log*
+
+# === Данные и артефакты рантайма ===
+uploads/
+aim_coach.db
+*.db
+profiles/
+reports/
+
+# === Датасеты (тяжёлые mp4/картинки — переносить отдельно) ===
+dataset/
+dataset1/
+
+# === Обучение YOLO ===
+runs_train*.log
+# Игнорируем содержимое runs/ (логи, графики, last.pt) на каждом уровне,
+# оставляя проход только к одному файлу — рабочим весам детектора.
+# (git не даёт раз-игнорить файл, если родительская папка вырезана целиком,
+#  поэтому вырезаем именно СОДЕРЖИМОЕ через /* и открываем путь по шагам.)
+runs/*
+!runs/detect/
+runs/detect/*
+!runs/detect/heads_v3/
+runs/detect/heads_v3/*
+!runs/detect/heads_v3/weights/
+runs/detect/heads_v3/weights/*
+!runs/detect/heads_v3/weights/best.pt
+
+# === Редактор / ОС ===
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
