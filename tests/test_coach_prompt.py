@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from coach.drill_catalog import menu_for_prompt
 from coach.prompt import SYSTEM_PROMPT, build_user_text
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "friend_clip3.json"
@@ -47,3 +48,13 @@ def test_build_user_text_mentions_frames_when_present():
     text = build_user_text(report, frame_numbers=[177, 244])
     assert "177" in text
     assert "244" in text
+
+
+def test_user_text_includes_catalog_menu():
+    text = build_user_text({"findings": []}, frame_numbers=[])
+    assert "consistency_t1_vt_ww5t_novice" in text
+    assert menu_for_prompt() in text
+
+
+def test_system_prompt_forbids_inventing_drills():
+    assert "drill_id" in SYSTEM_PROMPT
