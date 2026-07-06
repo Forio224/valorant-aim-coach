@@ -6,7 +6,7 @@ from pathlib import Path
 from coach.schema import CoachReport
 from coach_cli import collect_frames, main
 
-FIXTURE = Path(__file__).resolve().parent.parent / "reports" / "friend_clip3.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "friend_clip3.json"
 
 
 class StubClient:

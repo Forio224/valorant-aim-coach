@@ -5,7 +5,7 @@ from pathlib import Path
 
 from coach.prompt import SYSTEM_PROMPT, build_user_text
 
-FIXTURE = Path(__file__).resolve().parent.parent / "reports" / "friend_clip3.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "friend_clip3.json"
 
 
 def test_system_prompt_has_groundedness_rules():

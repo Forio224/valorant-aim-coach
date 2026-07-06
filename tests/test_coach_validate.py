@@ -2,7 +2,9 @@
 """Тесты groundedness-валидатора (Stage B2).
 
 Три класса подсаженных ошибок из спеки: фиктивный кадр, выдуманное HU-число,
-диагноз-из-гипотезы. Плюс golden-тесты: реальные ответы B1 проходят чисто.
+диагноз-из-гипотезы. Плюс тесты на фикстурах: репрезентативные синтетические
+schema-корректные CoachReport/evidence-JSON проходят чисто (это не
+захваченные реальные ответы VLM, а вручную составленные примеры).
 """
 import json
 import logging
@@ -14,7 +16,7 @@ import pytest
 from coach.schema import CoachReport, DrillSelection, FindingExplained
 from coach.validate import run_coach_validated, validate_coach_report
 
-REPORTS = Path(__file__).resolve().parent.parent / "reports"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 # ---------------------------------------------------------------- фикстуры
@@ -104,19 +106,19 @@ def test_clean_report_passes():
     assert validate_coach_report(_coach(), _evidence()) == []
 
 
-def test_golden_friend_b1_response_passes_clean():
+def test_valid_fixture_friend_passes_clean():
     coach = CoachReport(**json.loads(
-        (REPORTS / "coach_friend_clip3.json").read_text(encoding="utf-8")))
+        (FIXTURES / "coach_friend_clip3.json").read_text(encoding="utf-8")))
     evidence = json.loads(
-        (REPORTS / "friend_clip3.json").read_text(encoding="utf-8"))
+        (FIXTURES / "friend_clip3.json").read_text(encoding="utf-8"))
     assert validate_coach_report(coach, evidence) == []
 
 
-def test_golden_author_b1_response_passes_clean():
+def test_valid_fixture_author_passes_clean():
     coach = CoachReport(**json.loads(
-        (REPORTS / "coach_author_output_clip.json").read_text(encoding="utf-8")))
+        (FIXTURES / "coach_author_output_clip.json").read_text(encoding="utf-8")))
     evidence = json.loads(
-        (REPORTS / "author_output_clip.json").read_text(encoding="utf-8"))
+        (FIXTURES / "author_output_clip.json").read_text(encoding="utf-8"))
     assert validate_coach_report(coach, evidence) == []
 
 

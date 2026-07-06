@@ -10,7 +10,7 @@ import pytest
 from coach.client import DEFAULT_MODEL, MAX_IMAGES, CoachClient
 from coach.schema import CoachReport
 
-FIXTURE = Path(__file__).resolve().parent.parent / "reports" / "friend_clip3.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "friend_clip3.json"
 
 FAKE_JPEG = b"\xff\xd8\xff\xe0fake-jpeg-bytes"
 
