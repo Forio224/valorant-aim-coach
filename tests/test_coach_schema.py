@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from coach.schema import CoachReport, Drill, FindingExplained
+from coach.schema import (CoachReport, Drill, DrillSelection,
+                          FindingExplained, SuccessCriterion)
 
 
 def _valid_report_dict() -> dict:
@@ -20,11 +21,8 @@ def _valid_report_dict() -> dict:
         "drills": [
             {
                 "priority": 1,
-                "name": "Tile Frenzy 180",
-                "platform": "kovaaks",
-                "dose": "3 подхода по 5 минут в день",
-                "target_metric": "consistency",
-                "success_criterion": "MAE в дуэли < 1.0 HU на следующем клипе",
+                "drill_id": "consistency_t1_vt_ww5t_novice",
+                "rationale": "Разброс низкий, ошибка высокая — нужна повторяемость.",
             }
         ],
         "caveats": ["Pre-aim вердикт — гипотеза: всего 5 эпизодов."],
@@ -34,15 +32,34 @@ def _valid_report_dict() -> dict:
 def test_valid_report_parses():
     report = CoachReport.model_validate(_valid_report_dict())
     assert report.findings_explained[0].metric == "consistency"
-    assert report.drills[0].platform == "kovaaks"
+    assert report.drills[0].drill_id == "consistency_t1_vt_ww5t_novice"
     assert report.drills[0].priority == 1
 
 
-def test_invalid_platform_rejected():
-    data = _valid_report_dict()
-    data["drills"][0]["platform"] = "aimlab"
+def test_drill_selection_requires_drill_id():
     with pytest.raises(ValidationError):
-        CoachReport.model_validate(data)
+        DrillSelection.model_validate({"priority": 1, "rationale": "x"})
+
+
+def test_final_drill_carries_structured_criterion():
+    drill = Drill(
+        priority=1,
+        drill_id="consistency_t1_vt_ww5t_novice",
+        name="VT ww5t Novice S5",
+        platform="kovaaks",
+        tier=1,
+        dose="3 подхода по 5 минут",
+        target_metric="consistency",
+        rationale="повторяемость",
+        success_criterion="Средняя ошибка в дуэли < 1.147 HU на следующем клипе.",
+        criterion=SuccessCriterion(
+            metric="consistency", value_key="mae_hu", comparator="<",
+            target=1.147, baseline=1.349,
+            text="Средняя ошибка в дуэли < 1.147 HU на следующем клипе.",
+        ),
+    )
+    assert drill.criterion.baseline == 1.349
+    assert drill.tier == 1
 
 
 def test_invalid_confidence_rejected():
