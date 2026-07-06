@@ -11,7 +11,7 @@ from typing import List, Optional
 
 import pytest
 
-from coach.schema import CoachReport, Drill, FindingExplained
+from coach.schema import CoachReport, DrillSelection, FindingExplained
 from coach.validate import run_coach_validated, validate_coach_report
 
 REPORTS = Path(__file__).resolve().parent.parent / "reports"
@@ -80,7 +80,8 @@ def _coach(
     explanation: str = "Ошибка MAE 1.349 HU при разбросе std 0.764 HU.",
     frames: Optional[List[int]] = None,
     confidence: str = "diagnosis",
-    target_metric: str = "consistency",
+    drill_id: str = "consistency_t1_vt_ww5t_novice",
+    rationale: str = "Разброс низкий, ошибка высокая — нужна повторяемость.",
 ) -> CoachReport:
     return CoachReport(
         summary="Портрет игрока.",
@@ -92,16 +93,7 @@ def _coach(
                 confidence=confidence,
             )
         ],
-        drills=[
-            Drill(
-                priority=1,
-                name="Дрилл",
-                platform="kovaaks",
-                dose="10 минут",
-                target_metric=target_metric,
-                success_criterion="MAE < 1.0 HU",
-            )
-        ],
+        drills=[DrillSelection(priority=1, drill_id=drill_id, rationale=rationale)],
         caveats=[],
     )
 
@@ -176,17 +168,12 @@ def test_hu_number_from_note_text_passes():
     assert errors == []
 
 
-def test_drill_success_criterion_numbers_not_checked():
-    # целевые пороги дриллов — рекомендации, не измерения: 1.0 HU нет в JSON
-    assert validate_coach_report(_coach(), _evidence()) == []
-
-
 # ------------------------------------------- класс 3: диагноз-из-гипотезы
 
 def test_confidence_upgrade_caught():
     errors = validate_coach_report(
         _coach(metric="placement", explanation="Прицел ниже: dy -1.46 HU.",
-               frames=[100], confidence="diagnosis", target_metric="placement"),
+               frames=[100], confidence="diagnosis"),
         _evidence(),
     )
     assert len(errors) == 1
@@ -197,7 +184,7 @@ def test_hypothesis_with_assertive_stopword_caught():
     errors = validate_coach_report(
         _coach(metric="placement",
                explanation="Однозначно доказано: прицел ниже (dy -1.46 HU).",
-               frames=[100], confidence="hypothesis", target_metric="placement"),
+               frames=[100], confidence="hypothesis"),
         _evidence(),
     )
     assert len(errors) >= 1
@@ -217,7 +204,7 @@ def test_stopword_matched_on_word_boundary():
     errors = validate_coach_report(
         _coach(metric="placement",
                explanation="Данных недостаточно, предварительно dy -1.46 HU.",
-               frames=[100], confidence="hypothesis", target_metric="placement"),
+               frames=[100], confidence="hypothesis"),
         _evidence(),
     )
     assert errors == []
@@ -233,12 +220,32 @@ def test_unknown_finding_metric_caught():
     assert any("reaction_time" in e for e in errors)
 
 
-def test_unknown_drill_metric_caught():
-    errors = validate_coach_report(
-        _coach(target_metric="mouse_speed"), _evidence()
-    )
+# ---------------------------------------- класс 4: drill_id ↔ каталог ↔ finding
+
+def test_unknown_drill_id_caught():
+    errors = validate_coach_report(_coach(drill_id="totally_made_up"), _evidence())
     assert len(errors) == 1
-    assert "mouse_speed" in errors[0]
+    assert "totally_made_up" in errors[0]
+
+
+def test_drill_metric_without_finding_caught():
+    # bias-дрилл валиден по id, но finding bias в _evidence() нет
+    errors = validate_coach_report(
+        _coach(drill_id="bias_t1_vt_1w4ts_novice"), _evidence())
+    assert len(errors) == 1
+    assert "bias" in errors[0]
+
+
+def test_drill_rationale_hu_number_grounded_ok():
+    errors = validate_coach_report(
+        _coach(rationale="Ошибка держится около 1.349 HU."), _evidence())
+    assert errors == []
+
+
+def test_drill_rationale_fabricated_hu_caught():
+    errors = validate_coach_report(
+        _coach(rationale="Промах доходит до 8.88 HU."), _evidence())
+    assert any("8.88" in e for e in errors)
 
 
 # ------------------------------------------------- ретрай и деградация
