@@ -18,6 +18,7 @@ from engine.clip_context import ClipContext
 from engine.episodes import Episode
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
 from engine.metrics.correction import _AXIS_LABELS, compute_correction
+from engine.metrics.flick_phase import compute_flick_phases
 from engine.metrics.placement import compute_placement
 from engine.profile_store import (
     MIN_DUEL_FRAMES_FOR_DIAGNOSIS,
@@ -167,6 +168,9 @@ def _bias_finding(samples: Sequence[FrameSample], duel_evidence: List[dict],
 def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                         duel_hu: float) -> dict:
     rep = compute_correction(episodes, ctx, duel_hu=duel_hu)
+    ph = compute_flick_phases(episodes, ctx)
+    settle_ms = (None if ph.settle_time_frames_median is None
+                 else round(1000 * ph.settle_time_frames_median / ctx.fps))
     evidence = []
     for v in rep.verdicts:
         ep = episodes[v.episode_index - 1]
@@ -186,6 +190,20 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                 "note": f"{axis}: {_AXIS_LABELS[kind]}",
                 **_geom(_sample_at(ep, frame)),
             })
+    # фаз-улики: истинный перелёт через центр (пик доводки) — кадр иной, чем
+    # sign-flip у correction, поэтому доклеиваем отдельной уликой, а не дублем
+    for p in ph.phases:
+        if p.overshoot_evidence_frame is None:
+            continue
+        pep = episodes[p.episode_index - 1]
+        evidence.append({
+            "frame": p.overshoot_evidence_frame,
+            "time_s": _r(ctx.frame_to_seconds(p.overshoot_evidence_frame), 2),
+            "episode": p.episode_index,
+            "note": (f"истинный перелёт через центр {p.flick_overshoot_hu} HU"
+                     f" (пик доводки)"),
+            **_geom(_sample_at(pep, p.overshoot_evidence_frame)),
+        })
     return {
         "metric": "correction",
         "statement": (f"Коррекция на фликах ({rep.flicks_analysed}): X перелёт"
@@ -197,7 +215,15 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                    "x_overshoots": rep.x_overshoots,
                    "x_undershoots": rep.x_undershoots,
                    "y_overshoots": rep.y_overshoots,
-                   "y_undershoots": rep.y_undershoots},
+                   "y_undershoots": rep.y_undershoots,
+                   "flick_overshoot_hu_median": ph.flick_overshoot_hu_median,
+                   "settle_time_frames_median": ph.settle_time_frames_median,
+                   "settle_time_ms_median": settle_ms,
+                   "settle_jitter_hu_median": ph.settle_jitter_hu_median,
+                   "correction_path_hu_median": ph.correction_path_hu_median,
+                   "flicks_arrived": ph.flicks_arrived,
+                   "flicks_settled": ph.flicks_settled,
+                   "phase_confidence": ph.phase_confidence},
         "confidence": _confidence(rep.flicks_analysed, MIN_FLICKS_FOR_DIAGNOSIS),
         "caveat": ("смена знака может быть стрейфом врага — прокси-метрика по"
                    " output-space, не механика мыши"),
