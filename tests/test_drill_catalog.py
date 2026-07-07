@@ -139,6 +139,20 @@ def test_finalize_keeps_all_when_diagnosis_present():
     assert plan.extra_caveats == []
 
 
+def test_finalize_adds_cta_when_no_diagnosis_without_trim():
+    # две гипотезы, урезать нечего — но CTA «запиши ещё клип» всё равно нужен
+    findings = [_finding("consistency", {"mae_hu": 1.3}, confidence="hypothesis"),
+                _finding("bias", {"y_bias_hu": -0.9}, confidence="hypothesis")]
+    sels = [
+        DrillSelection(priority=1, drill_id="consistency_t1_vt_ww5t_novice", rationale="a"),
+        DrillSelection(priority=2, drill_id="bias_t1_vt_1w4ts_novice", rationale="b"),
+    ]
+    plan = finalize_plan(sels, findings)
+    assert len(plan.drills) == 2                       # ничего не урезано
+    assert plan.extra_caveats and "клип" in plan.extra_caveats[0].lower()
+    assert "сокращён" not in plan.extra_caveats[0]     # не урезали — не ври
+
+
 def test_finalize_skips_selection_without_finding():
     findings = [_finding("consistency", {"mae_hu": 1.3}, confidence="diagnosis")]
     sels = [DrillSelection(priority=1, drill_id="bias_t1_vt_1w4ts_novice", rationale="b")]

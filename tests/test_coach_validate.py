@@ -238,6 +238,15 @@ def test_drill_metric_without_finding_caught():
     assert "bias" in errors[0]
 
 
+def test_off_menu_tier_drill_caught():
+    # tier-3 id валиден по каталогу и метрика consistency есть среди findings,
+    # но первый клип — только tier-1: механический гейт, а не доверие промпту
+    errors = validate_coach_report(
+        _coach(drill_id="consistency_t3_vt_ww5t_advanced"), _evidence())
+    assert len(errors) == 1
+    assert "tier" in errors[0].lower()
+
+
 def test_drill_rationale_hu_number_grounded_ok():
     errors = validate_coach_report(
         _coach(rationale="Ошибка держится около 1.349 HU."), _evidence())

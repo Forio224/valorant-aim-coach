@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
-from coach.drill_catalog import get_catalog_drill
+from coach.drill_catalog import get_catalog_drill, menu_drill_ids
 from coach.schema import CoachReport
 
 logger = logging.getLogger(__name__)
@@ -153,6 +153,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
 
     errors.extend(_check_hu_numbers(coach.summary, numbers_known, "summary"))
 
+    menu_ids = menu_drill_ids()
     for drill in coach.drills:
         where = f"дрилл '{drill.drill_id}'"
         cd = get_catalog_drill(drill.drill_id)
@@ -161,6 +162,11 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
         elif cd.metric not in findings_by_metric:
             errors.append(
                 f"{where} лечит metric '{cd.metric}', которого нет среди findings"
+            )
+        elif drill.drill_id not in menu_ids:
+            errors.append(
+                f"{where} не из меню первого клипа (tier {cd.tier}); "
+                f"первый клип — только tier-1 дриллы"
             )
         errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
     return errors

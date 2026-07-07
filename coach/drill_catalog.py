@@ -117,12 +117,25 @@ def get_catalog_drill(drill_id: str) -> Optional[CatalogDrill]:
     return _CATALOG_BY_ID.get(drill_id)
 
 
+def _tier1_core_drills() -> List[CatalogDrill]:
+    """Tier-1 дрилл каждой core-метрики (первый клип всегда tier 1)."""
+    return [next(d for d in CATALOG[metric] if d.tier == 1)
+            for metric in CORE_METRICS]
+
+
+def menu_drill_ids() -> frozenset:
+    """Множество допустимых drill_id для первого клипа (только tier-1 core).
+
+    Валидатор гейтит выбор VLM по нему: tier механически зафиксирован на 1,
+    а не оставлен на доверие промпту (Фаза 2 ключуется на drill_id)."""
+    return frozenset(cd.drill_id for cd in _tier1_core_drills())
+
+
 def menu_for_prompt() -> str:
     """Меню tier-1 core-дриллов для промпта (первый клип всегда tier 1)."""
     lines = ["Меню дриллов (выбирай drill_id ТОЛЬКО отсюда):"]
-    for metric in CORE_METRICS:
-        cd = next(d for d in CATALOG[metric] if d.tier == 1)
-        lines.append(f"- {cd.drill_id} (метрика {metric}): {cd.name}")
+    for cd in _tier1_core_drills():
+        lines.append(f"- {cd.drill_id} (метрика {cd.metric}): {cd.name}")
     return "\n".join(lines)
 
 
@@ -231,10 +244,15 @@ def finalize_plan(selections: Sequence[DrillSelection],
     drills.sort(key=lambda d: d.priority)
     extra: List[str] = []
     has_diagnosis = any(f.get("confidence") == "diagnosis" for f in findings)
-    if not has_diagnosis and len(drills) > 2:
-        drills = drills[:2]
+    if not has_diagnosis:
+        # CTA нужен всегда, когда всё держится на гипотезах — «запиши ещё клип»
+        # ценнее всего именно тут; урезаем до топ-2 только если дриллов больше.
+        trimmed = len(drills) > 2
+        if trimmed:
+            drills = drills[:2]
+        head = ("план сокращён до 1–2 главных гипотез"
+                if trimmed else "план держится на гипотезах")
         extra.append(
-            "Пока ни один вывод не дотянул до уверенного диагноза — план "
-            "сокращён до 1–2 главных гипотез. Запиши ещё 1–2 клипа, чтобы "
-            "движок подтвердил закономерности.")
+            f"Пока ни один вывод не дотянул до уверенного диагноза — {head}. "
+            "Запиши ещё 1–2 клипа, чтобы движок подтвердил закономерности.")
     return FinalizedPlan(drills=drills, extra_caveats=extra)
