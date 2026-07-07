@@ -95,10 +95,12 @@ def compute_metric_criterion(metric: str, values: dict) -> Optional[dict]:
 назначений):
 ```
 drill_history: Sequence[ClipSnapshot]
-ClipSnapshot = {clip_time, clip_id, flagged_metrics:[...], findings:{metric:{values, confidence}}}
+ClipSnapshot = {clip_time, clip_id, assignments:{metric: drill_id}, findings:{metric:{values, confidence}}}
 ```
-`flagged_metrics` = метрики, получившие дрилл на том клипе. Упорядочен по возрастанию
-`clip_time` (сортирует пайплайн). `build_report` получает `drill_history: Sequence = ()`
+`assignments` = `{метрика: drill_id}` для метрик, получивших дрилл на том клипе
+(«флагнута» = ключ в `assignments`; `drill_id` нужен для `drill_id` выходной записи
+= самый свежий назначенный). Упорядочен по возрастанию `clip_time` (сортирует
+пайплайн). `build_report` получает `drill_history: Sequence = ()`
 (аддитивный дефолт → существующие вызовы/CLI/тесты не ломаются; CLI подаёт `[]`).
 
 **Ретроспективный active-set (решение по развилке):** репортим одну запись на
@@ -227,18 +229,19 @@ history_provider(player_id, exclude_clip_id) -> List[ClipSnapshot]
   непустым `evidence_report`; **дедуп по `clip_id`** (свежая сессия побеждает —
   зеркалит идемпотентность `profile_store`: переанализ клипа ≠ новая точка);
   **исключить текущий `clip_id`**; сортировка по `created_at` возр.
-  `flagged_metrics = {d["target_metric"] for d in coach_report["drills"]}`
-  (собранные дриллы несут `target_metric`); `findings` из `evidence_report`.
+  `assignments = {d["target_metric"]: d["drill_id"] for d in coach_report["drills"]}`
+  (собранные дриллы несут `target_metric` и `drill_id`); `findings` из `evidence_report`.
 - **Сессии `coach_failed` включаем** снимком: (а) провал валидации коуча → есть
-  реальные findings, `flagged_metrics=[]` (метрика может *разрешиться* на клипе
+  реальные findings, `assignments={}` (метрика может *разрешиться* на клипе
   без дрилла; эндпоинт/резолюция берутся); (б) пустой клип (нет врагов) → findings
   по M нет вообще → снимок инертен (M не эндпоинт/не резолюция, прозрачно пропущен).
 - Пайплайн: `history = history_provider(player_id, ctx.clip_id)` →
   `build_report(..., drill_history=history)`. **CLI подаёт `[]`** → `drill_progress=[]`,
   офлайн `aim_metrics.py` жив без БД.
-- `flagged_metrics` не вестигиально: серию рвёт резолюция (value vs target +
-  confidence-гейт), а `flagged_metrics` нужен для (а) ретроспективного active-set —
-  какие метрики репортить — и (б) «anchor = первый флаг серии».
+- `assignments` не вестигиально: серию рвёт резолюция (value vs target +
+  confidence-гейт), а `assignments` нужен для (а) ретроспективного active-set —
+  какие метрики репортить — (б) «anchor = первый флаг серии» и (в) `drill_id`
+  выходной записи (самый свежий назначенный для M).
 
 ---
 
