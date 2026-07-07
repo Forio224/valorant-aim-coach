@@ -23,7 +23,7 @@ from backend.services.analysis_pipeline import (STATUS_COACHING,
                                                 STATUS_DETECTING,
                                                 STATUS_MEASURING,
                                                 PipelineConfig, run_pipeline)
-from coach.schema import CoachReport, Drill, FindingExplained
+from coach.schema import CoachReport, DrillSelection, FindingExplained
 from engine.clip_context import context_for_video
 from engine.episodes import segment_episodes
 from engine.report import build_report
@@ -76,6 +76,15 @@ class FakeDetector:
         return self.heads
 
 
+# drill_id core-каталога (tier 1) на метрику — те же id, что в меню промпта.
+_DRILL_ID_BY_METRIC = {
+    "placement": "placement_t1_range_preaim_walk",
+    "consistency": "consistency_t1_vt_ww5t_novice",
+    "bias": "bias_t1_vt_1w4ts_novice",
+    "correction": "correction_t1_vt_pasu_novice",
+}
+
+
 def _valid_coach_for(report: dict) -> CoachReport:
     """Минимальный CoachReport, проходящий groundedness-валидатор B2."""
     finding = next(f for f in report["findings"] if f["evidence"])
@@ -89,10 +98,9 @@ def _valid_coach_for(report: dict) -> CoachReport:
             evidence_frames=[frame],
             confidence=finding["confidence"],
         )],
-        drills=[Drill(
-            priority=1, name="Дрилл", platform="range", dose="10 минут",
-            target_metric=finding["metric"],
-            success_criterion="стабильность на линии головы",
+        drills=[DrillSelection(
+            priority=1, drill_id=_DRILL_ID_BY_METRIC[finding["metric"]],
+            rationale="Обоснование без чисел.",
         )],
         caveats=[],
     )
@@ -203,6 +211,38 @@ def test_coach_success_returns_report_dict(video, tmp_path):
     assert result.coach_errors == []
     assert isinstance(result.coach_report, dict)
     assert result.coach_report["summary"]
+
+
+class _SelectionCoach:
+    """Стаб-коуч: возвращает DrillSelection, как настоящий VLM после Task 1."""
+
+    def generate(self, report, frame_paths, feedback=None):
+        finding = report["findings"][0]
+        return CoachReport(
+            summary="ок",
+            findings_explained=[FindingExplained(
+                metric=finding["metric"], explanation="ок",
+                evidence_frames=[], confidence=finding["confidence"])],
+            drills=[DrillSelection(
+                priority=1, drill_id=_DRILL_ID_BY_METRIC[finding["metric"]],
+                rationale="ок")],
+            caveats=[],
+        )
+
+
+def test_pipeline_assembles_final_drill_from_catalog(video, tmp_path):
+    """После валидации коуча пайплайн подставляет финальный Drill из каталога,
+    а не сырой DrillSelection VLM."""
+    result = _run(video, tmp_path, coach=_SelectionCoach())
+
+    assert result.coach_failed is False
+    expected_metric = result.evidence_report["findings"][0]["metric"]
+    drill = result.coach_report["drills"][0]
+    assert drill["name"]
+    assert drill["dose"]
+    assert drill["tier"]
+    assert drill["criterion"]
+    assert drill["target_metric"] == expected_metric
 
 
 def test_coach_gets_at_most_max_images_frames(video, tmp_path):
