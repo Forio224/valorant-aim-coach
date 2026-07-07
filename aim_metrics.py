@@ -383,9 +383,13 @@ def main() -> None:
         if args.correction:
             from engine.metrics.correction import (compute_correction,
                                                    format_correction)
+            from engine.metrics.flick_phase import (compute_flick_phases,
+                                                    format_flick_phases)
             print()
             print(format_correction(compute_correction(episodes, ctx,
                                                         duel_hu=args.duel_hu), ctx))
+            print()
+            print(format_flick_phases(compute_flick_phases(episodes, ctx), ctx))
         if args.save_profile:
             from engine.profile_store import (aggregate_profile,
                                               build_clip_record, format_profile,
