@@ -76,9 +76,14 @@ def compute_metric_criterion(metric: str, values: dict) -> Optional[dict]:
 `engine`. Хелпер обязан оставить движок автономным — это тот же инвариант, что
 «движок без БД».
 
-Плюс `normalize(value_key, raw) -> float` (тот же модуль): `abs()` для `*_bias_hu`,
-иначе identity — применяется к сырому значению текущего клипа под **фиксированным
-anchor-`value_key`**, чтобы anchor и current нормировались идентично.
+Плюс `normalize(value_key, raw) -> float` (тот же модуль) — применяется к сырому
+значению текущего клипа под **фиксированным anchor-`value_key`**. **Обязана
+применять ТОТ ЖЕ per-`value_key` трансформ, что `compute_metric_criterion` кладёт в
+`baseline`, ВКЛЮЧАЯ округление:** `*_bias_hu` → `abs()` затем `_r` (до 3 знаков, как
+в каталоге); `mae_hu` → `_r`; счётчики (`below`, `x_overshoots`…) → `int`. Иначе
+`anchor_value` (округлён через `baseline`) и `current_value` (через `normalize`)
+живут в чуть разных пространствах → флипы на границах `flat`/резолюции. Одна
+нормировка везде — anchor и current в идентичном пространстве.
 
 ## Компонент 2 — секция `drill_progress` (движок)
 
@@ -122,11 +127,15 @@ ClipSnapshot = {clip_time, clip_id, flagged_metrics:[...], findings:{metric:{val
    несут `min`-confidence + прокси-кавеат, не выдуманные разрывы.
 3. **current** = анализируемый сейчас клип:
    `current_value = normalize(value_key, findings[M].values[value_key])`.
-4. `delta = round(current_value − anchor_value)`; `direction` из `comparator`
-   (все `value_key` — «меньше лучше»: `improved`/`regressed`/`flat` по знаку;
-   `flat` = округлённая дельта `== 0`; `directional_meaningful=False` → пропуск как
-   `insufficient`, НЕ фейковый `improved`); `confidence = min(anchor_conf, current_conf)`
-   по порядку `insufficient < hypothesis < diagnosis`.
+4. `delta = _r(current_value − anchor_value)` — **`_r` до baseline-точности (3 знака),
+   НЕ голый `round()` до целого** (иначе суб-HU сигнал 0.2/0.6 HU схлопнется в 0/1);
+   для счётчиков разность целочисленная. Оба конца уже в одном нормированном
+   пространстве (см. `normalize` выше), поэтому граница точна и симметрична.
+   `direction` из `comparator` (все `value_key` — «меньше лучше»:
+   `improved`/`regressed`/`flat` по знаку; `flat` = дельта `== 0` после `_r`;
+   `directional_meaningful=False` → пропуск как `insufficient`, НЕ фейковый `improved`);
+   `confidence = min(anchor_conf, current_conf)` по порядку
+   `insufficient < hypothesis < diagnosis`.
 
 **Резолюция-гейт `≥ hypothesis` (тот же принцип, третий раз):** `insufficient` =
 сэмплов не хватает верить значению → не хватает и верить в резолюцию. Шумный клип
@@ -276,6 +285,10 @@ history_provider(player_id, exclude_clip_id) -> List[ClipSnapshot]
   (оба-diagnosis / один-hypothesis / один-insufficient), `resolved_now`, `series_len`,
   пустой-первый-клип, `order_uncertain=True` на выходе, correction-серия на
   вырожденном flicks_analysed-флаге остаётся skip.
+  **Граничный тест округления/точности:** суб-HU дельта (0.2 HU) НЕ схлопывается в
+  `flat` (докажет, что `_r`, а не integer-`round`); current ровно на `target` при
+  разной сырой точности anchor/current даёт стабильный `resolved_now` (докажет
+  единую нормировку — anchor и current в одном пространстве, граница не флипает).
 - **Рефактор общего хелпера** — регрессия: существующий `test_drill_catalog` зелёный
   (поведение `build_criterion` не изменилось); тест «`compute_metric_criterion` и
   `build_criterion` согласны на одних values»; **греп-гард: ноль импортов
@@ -312,6 +325,10 @@ history_provider(player_id, exclude_clip_id) -> List[ClipSnapshot]
 8. **Порядок `drill_progress` — канонический `CORE_METRICS`** (детерминизм; UX-сорт
    «regressed первыми» — UI-слой 2C).
 9. **Фронт не трогаем, но verify-пункт:** новые ключи не роняют сборку.
+10. **Единая нормировка + точность:** `normalize` применяет тот же per-`value_key`
+    трансформ, что `baseline` (вкл. округление `_r`/`int`); `delta = _r(...)` до
+    baseline-точности, НЕ до целого. anchor и current в одном пространстве →
+    границы `flat`/резолюции точны (граничный тест обязателен).
 
 ## Следующий шаг
 
