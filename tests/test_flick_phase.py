@@ -106,6 +106,12 @@ def test_jitter_uses_derivative_not_spread():
     j_smooth = compute_flick_phases([smooth], _ctx()).phases[0].settle_jitter_hu
     j_jerky = compute_flick_phases([jerky], _ctx()).phases[0].settle_jitter_hu
     assert j_jerky > j_smooth
+    # Дискриминатор: прямой спад с БОЛЬШИМ разбросом значений, но ПОСТОЯННЫМ
+    # шагом — рывковости нет → jitter = 0. Формула по разбросу stdev(radial)
+    # дала бы здесь ~0.17 и провалила бы этот assert (именно это и ловим).
+    ramp = _flick(_x([3, 0.7, 0.55, 0.4, 0.25, 0.25, 0.25]))
+    j_ramp = compute_flick_phases([ramp], _ctx()).phases[0].settle_jitter_hu
+    assert j_ramp == 0.0
 
 
 # ---- correction_path_hu --------------------------------------------------

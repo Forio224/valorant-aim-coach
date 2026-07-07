@@ -110,6 +110,8 @@ def _usable_phase(ep: Episode, index: int, near_band_hu: float, settle_tol_hu: f
                                  deadband_hu)
     over_y, iy = _axis_overshoot([smp.dy_hu for smp in ep.samples[:s + 1]],
                                  deadband_hu)
+    # берём ось с бОльшим перелётом; при точном равенстве — X (произвольно, но
+    # детерминированно; направление всё равно уточняют булевы correction.x/y)
     overshoot, ev_local = (over_y, iy) if over_y > over_x else (over_x, ix)
     ev_frame = frames[ev_local] if ev_local is not None else None
 
@@ -160,7 +162,8 @@ def compute_flick_phases(episodes: Sequence[Episode], ctx: ClipContext,
         flicks_arrived=sum(1 for p in phases if p.arrived),
         flicks_settled=len(usable),
         flick_overshoot_hu_median=_med("flick_overshoot_hu"),
-        settle_time_frames_median=(median([p.settle_time_frames for p in usable])
+        settle_time_frames_median=(round(median([p.settle_time_frames
+                                                  for p in usable]), 3)
                                    if usable else None),
         settle_jitter_hu_median=_med("settle_jitter_hu"),
         correction_path_hu_median=_med("correction_path_hu"),
