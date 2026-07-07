@@ -15,7 +15,7 @@
 
 ## Цель
 
-Разложить каждый флик на две фазы по ряду `offset(t)` и посчитать три новых
+Разложить каждый флик на две фазы по ряду `offset(t)` и посчитать четыре новых
 числа движком, **обогатив существующий `correction`-finding**. Никаких новых
 findings, метрик каталога, дриллов или изменений в выборе дрилла VLM — только
 богаче портрет. Управляющий принцип сохранён: числа считает движок, VLM их не
@@ -51,32 +51,54 @@ settle-маржи).
 выдумываем — понижаем confidence через счётчики). Отдельно считаем `flicks_arrived`
 и `flicks_settled`, чтобы честность была видна.
 
-## Три метрики (все считает движок)
+## Четыре метрики (все считает движок)
 
-Пофликово, только для usable-фликов (arrived+settled):
+Пофликово, только для usable-фликов (arrived+settled). Определения уточнены после
+ревью: overshoot = ИСТИННЫЙ перелёт через центр (не радиальный отскок), jitter — по
+производной (рывковость, не разброс), добавлена метрика пути доводки.
 
-### `flick_overshoot_hu` — величина выхода ЗА цель
-Пусть `m` = индекс минимума `radial_hu` на `[b … s]` (ближайший подход к голове).
-`flick_overshoot_hu = max(radial_hu[m … s]) − radial_hu[m]` — «отскок» прицела
-назад за цель после ближайшего подхода. Монотонный чистый заход → `0`. Уточняет
-`correction` (было булево «перелёт был», стало «на сколько HU»). Направление
-по осям уже даёт `correction.x/y` — здесь только магнитуда (радиальная).
+### `flick_overshoot_hu` — истинный перелёт ЗА цель
+Радиальный `offset` всегда ≥ 0, поэтому «отскок после минимума» ложно срабатывает
+на дрожи у цели (точное попадание с микродрожью читалось бы как перелёт). Меряем
+настоящий перелёт по ЗНАКОВЫМ осям `dx_hu`/`dy_hu` (та же логика, что в
+`correction`): на оси фиксируем начальный знак (первый выход за `DEADBAND_HU`);
+если позже знак меняется за deadband — перелёт был, его величина = макс.
+`|смещение|` на противоположной стороне после пересечения (в окне `[start … s]`).
+`flick_overshoot_hu` = максимум по осям (`0`, если ни одна ось не пересекла центр).
+Согласован с булевыми `correction.x/y` (та же ось — теперь ещё и «на сколько HU»).
 
-### `settle_time_frames` — длительность доводки
-`settle_time_frames = s − b`. Главный новый диагностик, ортогональный
-placement/consistency/correction. В отчёте дублируется в мс через `ctx.fps`
-(строкой для UI; число хранится в кадрах).
+### `settle_time_frames` (+ `settle_time_ms`) — скорость доводки
+`settle_time_frames = s − b`; сразу храним и `settle_time_ms = 1000·(s−b)/ctx.fps`
+в результатах (не только для UI — упрощает отчёты и корреляции). Главный новый
+диагностик, ортогональный placement/consistency/correction: «как быстро хороший
+флик превращается в готовый выстрел».
 
-### `settle_jitter_hu` — рывковость доводки
-`settle_jitter_hu = stdev(radial_hu[b … s])` — остаточная дисперсия на доводке.
-Высокий при нормальном `settle_time` = дёрганая микрокоррекция. В 2A только
-считаем; триггер трекинг-дрилла по нему — в 2C.
+### `settle_jitter_hu` — рывковость доводки (по производной)
+`stdev(radial_hu)` меряет разброс: плавный спад `0.8→0.4` и дёрганый
+`0.5→0.2→0.6→0.1` дают похожую дисперсию. Рывковость честнее меряется по первой
+производной: `settle_jitter_hu = stdev(Δradial_hu)`, где
+`Δradial_i = radial_hu[i] − radial_hu[i−1]` на `[b … s]`. Гладкая доводка =
+согласованные шаги (низкий), «поймал-потерял» = скачущие (высокий). Триггер
+трекинг-дрилла по нему — в 2C.
+
+### `correction_path_hu` — эффективность доводки
+`correction_path_hu = Σ |Δradial_hu|` на `[b … s]` — суммарный путь прицела на
+доводке. При равном `settle_time` игрок, прошедший 5 HU, контролирует мышь лучше
+прошедшего 20 HU. Почти ортогональна остальным трём (время / перелёт / рывковость
+/ путь). Ортогональна `settle_jitter` тоже: та — изменчивость шага, эта —
+суммарная магнитуда.
+
+> Отклонены в 2A (YAGNI / избыточность): `first_pass_error_hu`, `correction_count`,
+> `settle_efficiency` (производное от path), `peak_speed_hu_frame`,
+> `deceleration_frames`. Первые три перекрываются с принятыми; последние две
+> относятся к баллистике, а не к качеству доводки. Кандидаты на будущие фазы.
 
 ## Агрегация и confidence
 
 - Агрегат по клипу — **медиана** по usable-фликам (устойчивее среднего на 3–8
   фликах): `flick_overshoot_hu_median`, `settle_time_frames_median`,
-  `settle_jitter_hu_median`.
+  `settle_jitter_hu_median`, `correction_path_hu_median`. `settle_time_ms_median`
+  выводится из `settle_time_frames_median` и `ctx.fps`.
 - `phase_confidence` по числу usable-фликов:
   - `insufficient` — usable == 0 (медианы = null, чисел нет);
   - `hypothesis` — 0 < usable < `MIN_FLICKS_FOR_PHASE`;
@@ -106,7 +128,8 @@ placement/consistency/correction. В отчёте дублируется в мс
 
 - `@dataclass(frozen=True) FlickPhase`: пофликовая запись
   (`episode_index, start_frame, arrived, settled, flick_overshoot_hu,
-  settle_time_frames, settle_jitter_hu, overshoot_evidence_frame`).
+  settle_time_frames, settle_jitter_hu, correction_path_hu,
+  overshoot_evidence_frame`).
 - `@dataclass(frozen=True) FlickPhaseReport`: `flicks_analysed, flicks_arrived,
   flicks_settled, *_median, phase_confidence, phases: Tuple[FlickPhase, ...]`.
 - `compute_flick_phases(episodes, ctx, **knobs) -> FlickPhaseReport`.
@@ -123,8 +146,9 @@ placement/consistency/correction. В отчёте дублируется в мс
   "flicks_analysed": 8, "x_overshoots": 5, "x_undershoots": 1,
   "y_overshoots": 0, "y_undershoots": 1,
   "flick_overshoot_hu_median": 0.9,
-  "settle_time_frames_median": 11,
-  "settle_jitter_hu_median": 0.18,
+  "settle_time_frames_median": 11, "settle_time_ms_median": 183,
+  "settle_jitter_hu_median": 0.12,
+  "correction_path_hu_median": 1.6,
   "flicks_arrived": 8, "flicks_settled": 6,
   "phase_confidence": "diagnosis"
 }
@@ -132,11 +156,17 @@ placement/consistency/correction. В отчёте дублируется в мс
 
 ## Тесты (синтетические эпизоды, TDD)
 
-- **чистый флик** — быстрый заход, оседает за K кадров, overshoot ≈ 0;
+- **чистый флик** — быстрый заход, оседает за K кадров, overshoot = 0, путь мал;
 - **долгий settle** — вход в band, устойчивость только через много кадров →
-  большой `settle_time_frames`;
-- **перелёт** — заход, минимум, отскок → `flick_overshoot_hu` > 0, улика на пике;
-- **джиттер** — осцилляция на доводке → высокий `settle_jitter_hu`;
+  большой `settle_time_frames`/`settle_time_ms`;
+- **истинный перелёт** — ось `dx_hu` пересекает центр (смена знака за deadband) →
+  `flick_overshoot_hu` > 0 = макс. заход на противоположную сторону, улика на пике;
+- **дрожь без перелёта** — микроколебания у цели БЕЗ смены знака → overshoot = 0
+  (регрессия на старую радиальную формулу, которая дала бы ложный перелёт);
+- **джиттер по производной** — плавный спад vs дёрганый с близким `stdev(radial)`,
+  но разным `stdev(Δradial)` → `settle_jitter_hu` разводит их;
+- **путь доводки** — два флика с равным `settle_time`, но разным Σ|Δradial| →
+  `correction_path_hu` разный;
 - **не дошёл** — offset никогда не входит в near-band → arrived=False, исключён;
 - **не оселся** — вошёл в band, но не стабилизировался → settled=False,
   `settle_time_frames=null`, исключён из медиан;
