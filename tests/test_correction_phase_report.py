@@ -50,3 +50,41 @@ def test_phase_keys_null_when_no_usable_flicks():
     assert values["settle_time_frames_median"] is None
     assert values["settle_time_ms_median"] is None
     assert values["phase_confidence"] == "insufficient"
+
+
+def _flick_xy(offsets, start=100, track_id=1) -> Episode:
+    """Флик из знаковых (dx, dy); radial = hypot — для перелёта через центр."""
+    samples = tuple(
+        FrameSample(frame_idx=start + i, dx_hu=dx, dy_hu=dy,
+                    radial_hu=(dx * dx + dy * dy) ** 0.5, head_height_px=63.0)
+        for i, (dx, dy) in enumerate(offsets))
+    return Episode(track_id=track_id, start_frame=start,
+                   end_frame=start + len(offsets) - 1, samples=samples,
+                   kind="flick", distance_bucket="mid", multi_enemy=False,
+                   multi_from_frame=None, duel_frames=0,
+                   peak_closing_speed_hu_s=50.0)
+
+
+def test_overshoot_frame_surfaced_in_evidence():
+    # dx пересекает центр: +...+ затем -0.6 (пик) → истинный перелёт 0.6 на кадре103
+    offs = [(3, 0), (1.5, 0), (0.5, 0), (-0.6, 0), (-0.4, 0),
+            (-0.2, 0), (-0.1, 0), (-0.1, 0)]
+    eps = [_flick_xy(offs, start=100)]
+    finding = _correction_finding(eps, _ctx(), duel_hu=3.0)
+    ph = compute_flick_phases(eps, _ctx())
+    frame = ph.phases[0].overshoot_evidence_frame
+    assert frame == 103
+    # фаз-улика присутствует, с отличимым маркером «пик доводки»
+    ev = [e for e in finding["evidence"]
+          if e["frame"] == frame and "пик доводки" in e["note"]]
+    assert len(ev) == 1
+    assert ev[0]["episode"] == 1
+    assert ev[0]["dx_hu"] == -0.6          # геометрия реального кадра проброшена
+    assert str(ph.phases[0].flick_overshoot_hu) in ev[0]["note"]
+
+
+def test_no_phase_overshoot_evidence_when_no_crossing():
+    # монотонный подход без смены знака → фаз-улики перелёта нет
+    eps = [_flick([3, 1, 0.6, 0.3, 0.3, 0.3], start=100)]
+    finding = _correction_finding(eps, _ctx(), duel_hu=3.0)
+    assert all("пик доводки" not in e["note"] for e in finding["evidence"])

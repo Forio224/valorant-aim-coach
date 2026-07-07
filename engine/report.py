@@ -190,6 +190,20 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                 "note": f"{axis}: {_AXIS_LABELS[kind]}",
                 **_geom(_sample_at(ep, frame)),
             })
+    # фаз-улики: истинный перелёт через центр (пик доводки) — кадр иной, чем
+    # sign-flip у correction, поэтому доклеиваем отдельной уликой, а не дублем
+    for p in ph.phases:
+        if p.overshoot_evidence_frame is None:
+            continue
+        pep = episodes[p.episode_index - 1]
+        evidence.append({
+            "frame": p.overshoot_evidence_frame,
+            "time_s": _r(ctx.frame_to_seconds(p.overshoot_evidence_frame), 2),
+            "episode": p.episode_index,
+            "note": (f"истинный перелёт через центр {p.flick_overshoot_hu} HU"
+                     f" (пик доводки)"),
+            **_geom(_sample_at(pep, p.overshoot_evidence_frame)),
+        })
     return {
         "metric": "correction",
         "statement": (f"Коррекция на фликах ({rep.flicks_analysed}): X перелёт"
