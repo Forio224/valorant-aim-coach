@@ -1,0 +1,213 @@
+{
+  "schema_version": "1.1",
+  "generated_at": "2026-07-01T12:00:00+00:00",
+  "clip": {
+    "player_id": "friend",
+    "clip_id": "clip3",
+    "fps": 59.94,
+    "width": 1920,
+    "height": 1080,
+    "frame_count": 650,
+    "sens": 0.35,
+    "edpi": 280.0,
+    "agent": "Jett",
+    "map_name": "Ascent"
+  },
+  "episodes": [
+    {
+      "index": 1,
+      "track_id": 1,
+      "start_frame": 120,
+      "end_frame": 150,
+      "start_s": 2.0,
+      "end_s": 2.5,
+      "kind": "flick",
+      "distance_bucket": "close",
+      "multi_from_frame": null,
+      "duel_frames": 18,
+      "peak_closing_speed_hu_s": 42.5,
+      "birth": {
+        "dx_hu": -3.538,
+        "dy_hu": -1.461,
+        "radial_hu": 3.828
+      }
+    },
+    {
+      "index": 2,
+      "track_id": 2,
+      "start_frame": 300,
+      "end_frame": 340,
+      "start_s": 5.0,
+      "end_s": 5.67,
+      "kind": "flick",
+      "distance_bucket": "mid",
+      "multi_from_frame": null,
+      "duel_frames": 22,
+      "peak_closing_speed_hu_s": 55.2,
+      "birth": {
+        "dx_hu": 4.2,
+        "dy_hu": 0.8,
+        "radial_hu": 4.276
+      }
+    }
+  ],
+  "findings": [
+    {
+      "metric": "placement",
+      "statement": "Пре-айм: 1 из 2 эпизодов — прицел ниже линии головы (>=0.5 HU); выше: 1; на линии: 0",
+      "values": {
+        "total": 2,
+        "below": 1,
+        "above": 1,
+        "on_line": 0,
+        "band_hu": 0.5,
+        "mean_dy_hu": -0.33
+      },
+      "confidence": "hypothesis",
+      "evidence": [
+        {
+          "frame": 120,
+          "time_s": 2.0,
+          "episode": 1,
+          "note": "появление врага слева (dx -3.54 HU): прицел ниже линии головы (dy -1.46 HU)",
+          "dx_hu": -3.538,
+          "dy_hu": -1.461,
+          "head_height_px": 54.72
+        },
+        {
+          "frame": 300,
+          "time_s": 5.0,
+          "episode": 2,
+          "note": "появление врага справа (dx +4.20 HU): прицел выше линии головы (dy +0.80 HU)",
+          "dx_hu": 4.2,
+          "dy_hu": 0.8,
+          "head_height_px": 52.1
+        }
+      ]
+    },
+    {
+      "metric": "consistency",
+      "statement": "разброс низкий, ошибка высокая",
+      "values": {
+        "duel_frames": 40,
+        "mae_hu": 1.349,
+        "std_hu": 0.764,
+        "iqr_hu": 0.912,
+        "p95_hu": 2.35,
+        "diagnosis": "noisy"
+      },
+      "confidence": "diagnosis",
+      "evidence": [
+        {
+          "frame_start": 125,
+          "frame_end": 150,
+          "time_s": 2.09,
+          "episode": 1,
+          "note": "дуэльное окно (18 кадров, radial<=3 HU)",
+          "dx_hu": -2.613,
+          "dy_hu": -0.963,
+          "head_height_px": 63.02
+        },
+        {
+          "frame_start": 305,
+          "frame_end": 340,
+          "time_s": 5.09,
+          "episode": 2,
+          "note": "дуэльное окно (22 кадра, radial<=3 HU)",
+          "dx_hu": 2.05,
+          "dy_hu": 0.41,
+          "head_height_px": 58.4
+        }
+      ]
+    },
+    {
+      "metric": "bias",
+      "statement": "Биасы в дуэли: Y -0.680 HU (минус = прицел ниже голов), X +0.150 HU",
+      "values": {
+        "y_bias_hu": -0.68,
+        "x_bias_hu": 0.15,
+        "x_abs_hu": 1.2,
+        "y_abs_hu": 1.05,
+        "duel_frames": 40
+      },
+      "confidence": "hypothesis",
+      "evidence": [
+        {
+          "frame_start": 125,
+          "frame_end": 150,
+          "time_s": 2.09,
+          "episode": 1,
+          "note": "дуэльное окно (18 кадров, radial<=3 HU)",
+          "dx_hu": -2.613,
+          "dy_hu": -0.963,
+          "head_height_px": 63.02
+        },
+        {
+          "frame_start": 305,
+          "frame_end": 340,
+          "time_s": 5.09,
+          "episode": 2,
+          "note": "дуэльное окно (22 кадра, radial<=3 HU)",
+          "dx_hu": 2.05,
+          "dy_hu": 0.41,
+          "head_height_px": 58.4
+        }
+      ]
+    },
+    {
+      "metric": "correction",
+      "statement": "Коррекция на фликах (2): X перелёт 1/недолёт 0, Y перелёт 0/недолёт 1.",
+      "values": {
+        "flicks_total": 3,
+        "flicks_analysed": 2,
+        "x_overshoots": 1,
+        "x_undershoots": 0,
+        "y_overshoots": 0,
+        "y_undershoots": 1
+      },
+      "confidence": "hypothesis",
+      "caveat": "смена знака может быть стрейфом врага — прокси-метрика по output-space, не механика мыши",
+      "evidence": [
+        {
+          "frame": 135,
+          "time_s": 2.25,
+          "episode": 1,
+          "note": "X: перелёт",
+          "dx_hu": 1.1,
+          "dy_hu": -0.2,
+          "head_height_px": 60.1
+        },
+        {
+          "frame": 320,
+          "time_s": 5.34,
+          "episode": 2,
+          "note": "Y: недолёт",
+          "dx_hu": 2.0,
+          "dy_hu": 0.9,
+          "head_height_px": 57.0
+        }
+      ]
+    }
+  ],
+  "profile": {
+    "player_id": "friend",
+    "clips": 1,
+    "episodes_total": 2,
+    "flicks_analysed_total": 2,
+    "duel_frames_total": 40,
+    "duel_mae_hu": 1.349,
+    "std_hu": 0.764,
+    "y_bias_hu": -0.68,
+    "x_bias_hu": 0.15,
+    "placement_total": 2,
+    "placement_below": 1,
+    "placement_above": 1,
+    "placement_on_line": 0,
+    "x_overshoots": 1,
+    "x_undershoots": 0,
+    "y_overshoots": 0,
+    "y_undershoots": 1,
+    "confidence": "hypothesis",
+    "confidence_reason": "мало данных: клипов 1 < 2, эпизодов 2 < 8, дуэльных кадров 40 < 100"
+  }
+}

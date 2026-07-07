@@ -5,7 +5,7 @@ CoachReport — то, что VLM обязан вернуть (structured output)
 кадры в тексте должны трассироваться к evidence-JSON движка; механическая
 проверка — Stage B2 (coach/validate.py).
 """
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -23,21 +23,53 @@ class FindingExplained(BaseModel):
     confidence: Confidence
 
 
-class Drill(BaseModel):
-    """Тренировочное упражнение, привязанное к конкретному finding."""
+class DrillSelection(BaseModel):
+    """Выбор VLM: id упражнения из каталога движка + приоритет + обоснование.
+
+    VLM НЕ производит ни названий, ни чисел — их детерминированно
+    подставляет движок (coach/drill_catalog.py) после валидации."""
 
     priority: int
+    drill_id: str
+    rationale: str
+
+
+class SuccessCriterion(BaseModel):
+    """Числовой критерий успеха, посчитанный движком из values finding-а.
+
+    Строка `text` — для UI; остальные поля структурны для машинной сверки
+    на следующем клипе (Фаза 2)."""
+
+    metric: str
+    value_key: str
+    comparator: str            # "<" | "count_le" | "direction"
+    target: Optional[float]
+    baseline: Optional[float]
+    text: str
+
+
+class Drill(BaseModel):
+    """Финальный дрилл, собранный движком из DrillSelection + каталога."""
+
+    priority: int
+    drill_id: str
     name: str
     platform: Platform
+    tier: int
     dose: str
     target_metric: str
+    rationale: str
     success_criterion: str
+    criterion: SuccessCriterion
 
 
 class CoachReport(BaseModel):
-    """Полный коучинг-отчёт: портрет, объяснения, план, ограничения."""
+    """Коучинг-отчёт: портрет, объяснения, ВЫБОР дриллов, ограничения.
+
+    drills — сырой выбор VLM (DrillSelection); финальные Drill подставляет
+    движок после сборки и не участвуют в structured output контракте."""
 
     summary: str
     findings_explained: List[FindingExplained]
-    drills: List[Drill]
+    drills: List[DrillSelection]
     caveats: List[str]

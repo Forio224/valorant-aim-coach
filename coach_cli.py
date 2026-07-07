@@ -60,16 +60,21 @@ def main(argv: Optional[Sequence[str]] = None, client=None) -> int:
             print(f"- {error}", file=sys.stderr)
         return 1
 
+    from coach.drill_catalog import finalize_plan
+
     coach_report = result.coach_report
+    plan = finalize_plan(coach_report.drills, report.get("findings", []))
+    out_doc = coach_report.model_dump()
+    out_doc["drills"] = [d.model_dump() for d in plan.drills]
+    out_doc["caveats"] = out_doc["caveats"] + plan.extra_caveats
+
     out_path = Path(args.out)
     out_path.write_text(
-        json.dumps(coach_report.model_dump(), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+        json.dumps(out_doc, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"CoachReport записан: {out_path} (попыток: {result.attempts})")
-    print(f"Дриллов: {len(coach_report.drills)}, "
+    print(f"Дриллов: {len(out_doc['drills'])}, "
           f"объяснений: {len(coach_report.findings_explained)}, "
-          f"оговорок: {len(coach_report.caveats)}")
+          f"оговорок: {len(out_doc['caveats'])}")
     return 0
 
 

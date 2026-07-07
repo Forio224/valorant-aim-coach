@@ -2,7 +2,9 @@
 """Тесты groundedness-валидатора (Stage B2).
 
 Три класса подсаженных ошибок из спеки: фиктивный кадр, выдуманное HU-число,
-диагноз-из-гипотезы. Плюс golden-тесты: реальные ответы B1 проходят чисто.
+диагноз-из-гипотезы. Плюс тесты на фикстурах: репрезентативные синтетические
+schema-корректные CoachReport/evidence-JSON проходят чисто (это не
+захваченные реальные ответы VLM, а вручную составленные примеры).
 """
 import json
 import logging
@@ -11,10 +13,10 @@ from typing import List, Optional
 
 import pytest
 
-from coach.schema import CoachReport, Drill, FindingExplained
+from coach.schema import CoachReport, DrillSelection, FindingExplained
 from coach.validate import run_coach_validated, validate_coach_report
 
-REPORTS = Path(__file__).resolve().parent.parent / "reports"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 # ---------------------------------------------------------------- фикстуры
@@ -80,7 +82,8 @@ def _coach(
     explanation: str = "Ошибка MAE 1.349 HU при разбросе std 0.764 HU.",
     frames: Optional[List[int]] = None,
     confidence: str = "diagnosis",
-    target_metric: str = "consistency",
+    drill_id: str = "consistency_t1_vt_ww5t_novice",
+    rationale: str = "Разброс низкий, ошибка высокая — нужна повторяемость.",
 ) -> CoachReport:
     return CoachReport(
         summary="Портрет игрока.",
@@ -92,16 +95,7 @@ def _coach(
                 confidence=confidence,
             )
         ],
-        drills=[
-            Drill(
-                priority=1,
-                name="Дрилл",
-                platform="kovaaks",
-                dose="10 минут",
-                target_metric=target_metric,
-                success_criterion="MAE < 1.0 HU",
-            )
-        ],
+        drills=[DrillSelection(priority=1, drill_id=drill_id, rationale=rationale)],
         caveats=[],
     )
 
@@ -112,19 +106,19 @@ def test_clean_report_passes():
     assert validate_coach_report(_coach(), _evidence()) == []
 
 
-def test_golden_friend_b1_response_passes_clean():
+def test_valid_fixture_friend_passes_clean():
     coach = CoachReport(**json.loads(
-        (REPORTS / "coach_friend_clip3.json").read_text(encoding="utf-8")))
+        (FIXTURES / "coach_friend_clip3.json").read_text(encoding="utf-8")))
     evidence = json.loads(
-        (REPORTS / "friend_clip3.json").read_text(encoding="utf-8"))
+        (FIXTURES / "friend_clip3.json").read_text(encoding="utf-8"))
     assert validate_coach_report(coach, evidence) == []
 
 
-def test_golden_author_b1_response_passes_clean():
+def test_valid_fixture_author_passes_clean():
     coach = CoachReport(**json.loads(
-        (REPORTS / "coach_author_output_clip.json").read_text(encoding="utf-8")))
+        (FIXTURES / "coach_author_output_clip.json").read_text(encoding="utf-8")))
     evidence = json.loads(
-        (REPORTS / "author_output_clip.json").read_text(encoding="utf-8"))
+        (FIXTURES / "author_output_clip.json").read_text(encoding="utf-8"))
     assert validate_coach_report(coach, evidence) == []
 
 
@@ -176,17 +170,12 @@ def test_hu_number_from_note_text_passes():
     assert errors == []
 
 
-def test_drill_success_criterion_numbers_not_checked():
-    # целевые пороги дриллов — рекомендации, не измерения: 1.0 HU нет в JSON
-    assert validate_coach_report(_coach(), _evidence()) == []
-
-
 # ------------------------------------------- класс 3: диагноз-из-гипотезы
 
 def test_confidence_upgrade_caught():
     errors = validate_coach_report(
         _coach(metric="placement", explanation="Прицел ниже: dy -1.46 HU.",
-               frames=[100], confidence="diagnosis", target_metric="placement"),
+               frames=[100], confidence="diagnosis"),
         _evidence(),
     )
     assert len(errors) == 1
@@ -197,7 +186,7 @@ def test_hypothesis_with_assertive_stopword_caught():
     errors = validate_coach_report(
         _coach(metric="placement",
                explanation="Однозначно доказано: прицел ниже (dy -1.46 HU).",
-               frames=[100], confidence="hypothesis", target_metric="placement"),
+               frames=[100], confidence="hypothesis"),
         _evidence(),
     )
     assert len(errors) >= 1
@@ -217,7 +206,7 @@ def test_stopword_matched_on_word_boundary():
     errors = validate_coach_report(
         _coach(metric="placement",
                explanation="Данных недостаточно, предварительно dy -1.46 HU.",
-               frames=[100], confidence="hypothesis", target_metric="placement"),
+               frames=[100], confidence="hypothesis"),
         _evidence(),
     )
     assert errors == []
@@ -233,12 +222,41 @@ def test_unknown_finding_metric_caught():
     assert any("reaction_time" in e for e in errors)
 
 
-def test_unknown_drill_metric_caught():
-    errors = validate_coach_report(
-        _coach(target_metric="mouse_speed"), _evidence()
-    )
+# ---------------------------------------- класс 4: drill_id ↔ каталог ↔ finding
+
+def test_unknown_drill_id_caught():
+    errors = validate_coach_report(_coach(drill_id="totally_made_up"), _evidence())
     assert len(errors) == 1
-    assert "mouse_speed" in errors[0]
+    assert "totally_made_up" in errors[0]
+
+
+def test_drill_metric_without_finding_caught():
+    # bias-дрилл валиден по id, но finding bias в _evidence() нет
+    errors = validate_coach_report(
+        _coach(drill_id="bias_t1_vt_1w4ts_novice"), _evidence())
+    assert len(errors) == 1
+    assert "bias" in errors[0]
+
+
+def test_off_menu_tier_drill_caught():
+    # tier-3 id валиден по каталогу и метрика consistency есть среди findings,
+    # но первый клип — только tier-1: механический гейт, а не доверие промпту
+    errors = validate_coach_report(
+        _coach(drill_id="consistency_t3_vt_ww5t_advanced"), _evidence())
+    assert len(errors) == 1
+    assert "tier" in errors[0].lower()
+
+
+def test_drill_rationale_hu_number_grounded_ok():
+    errors = validate_coach_report(
+        _coach(rationale="Ошибка держится около 1.349 HU."), _evidence())
+    assert errors == []
+
+
+def test_drill_rationale_fabricated_hu_caught():
+    errors = validate_coach_report(
+        _coach(rationale="Промах доходит до 8.88 HU."), _evidence())
+    assert any("8.88" in e for e in errors)
 
 
 # ------------------------------------------------- ретрай и деградация

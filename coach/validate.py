@@ -2,8 +2,11 @@
 """Groundedness-валидация коуч-отчёта (Stage B2).
 
 Механическая анти-выдумка: ответ VLM сверяется с evidence-JSON движка по
-четырём осям — кадры, HU-числа, metric-ссылки, confidence-язык. Числа в
-дриллах не проверяются: целевые пороги — рекомендации, а не измерения.
+четырём осям — кадры, HU-числа, metric-ссылки, confidence-язык. Дрилл
+проверяется иначе: VLM отдаёт только drill_id + rationale (Фаза 1), числовой
+критерий и название дрилла собирает движок из каталога (coach/drill_catalog);
+проверяется, что drill_id существует в каталоге и его metric встречается
+среди findings, а rationale проходит ту же HU-groundedness проверку.
 Провал -> один ретрай с перечнем ошибок; повторный провал -> деградация
 coach_failed (ошибка логируется, не глотается).
 """
@@ -12,6 +15,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Optional, Sequence
 
+from coach.drill_catalog import get_catalog_drill, menu_drill_ids
 from coach.schema import CoachReport
 
 logger = logging.getLogger(__name__)
@@ -149,12 +153,22 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
 
     errors.extend(_check_hu_numbers(coach.summary, numbers_known, "summary"))
 
+    menu_ids = menu_drill_ids()
     for drill in coach.drills:
-        if drill.target_metric not in findings_by_metric:
+        where = f"дрилл '{drill.drill_id}'"
+        cd = get_catalog_drill(drill.drill_id)
+        if cd is None:
+            errors.append(f"{where} отсутствует в каталоге движка")
+        elif cd.metric not in findings_by_metric:
             errors.append(
-                f"дрилл '{drill.name}' ссылается на несуществующий "
-                f"metric '{drill.target_metric}'"
+                f"{where} лечит metric '{cd.metric}', которого нет среди findings"
             )
+        elif drill.drill_id not in menu_ids:
+            errors.append(
+                f"{where} не из меню первого клипа (tier {cd.tier}); "
+                f"первый клип — только tier-1 дриллы"
+            )
+        errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
     return errors
 
 
