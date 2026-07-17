@@ -18,6 +18,7 @@ from engine.clip_context import ClipContext
 from engine.episodes import Episode
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
 from engine.metrics.correction import _AXIS_LABELS, compute_correction
+from engine.metrics.drill_progress import compute_drill_progress
 from engine.metrics.flick_phase import compute_flick_phases
 from engine.metrics.placement import compute_placement
 from engine.profile_store import (
@@ -236,7 +237,8 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
 def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
                  episodes: Sequence[Episode],
                  duel_hu: float = DEFAULT_DUEL_HU,
-                 profile: Optional[PlayerProfile] = None) -> dict:
+                 profile: Optional[PlayerProfile] = None,
+                 drill_history: Sequence = ()) -> dict:
     """The full evidence-tagged portrait of one clip (+ longitudinal profile)."""
     duel_evidence = _duel_window_evidence(episodes, ctx, duel_hu)
     report = {
@@ -251,6 +253,8 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
             _correction_finding(episodes, ctx, duel_hu),
         ],
     }
+    report["drill_progress"] = compute_drill_progress(report["findings"],
+                                                      list(drill_history))
     if profile is not None:
         report["profile"] = asdict(profile)
     return report
