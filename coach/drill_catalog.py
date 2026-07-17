@@ -12,13 +12,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Sequence
 
 from coach.schema import Drill, DrillSelection, SuccessCriterion
+from engine.metrics.criterion import (CORE_METRICS, CONSISTENCY_IMPROVEMENT,
+                                       compute_metric_criterion)
 
-CORE_METRICS = ("placement", "consistency", "bias", "correction")
-
-# Ручки критериев в одном месте (доменная правка не трогает логику).
-PLACEMENT_TARGET_FRACTION = 0.2
-CONSISTENCY_IMPROVEMENT = 0.15     # MAE < base * 0.85
-BIAS_HALVE_FACTOR = 0.5
 
 
 @dataclass(frozen=True)
@@ -139,71 +135,48 @@ def menu_for_prompt() -> str:
     return "\n".join(lines)
 
 
-def _r(x: Optional[float], digits: int = 3) -> Optional[float]:
-    return None if x is None else round(x, digits)
-
-
 def build_criterion(metric: str, values: dict) -> SuccessCriterion:
-    """Детерминированный критерий из values finding-а (число считает движок)."""
+    """Детерминированный критерий: числа из общего хелпера движка (engine/),
+    человеческий text — здесь."""
+    m = compute_metric_criterion(metric, values)
+    vk, comparator = m["value_key"], m["comparator"]
+    target, baseline = m["target"], m["baseline"]
     if metric == "placement":
-        total = values.get("total")
-        below = values.get("below")
-        if total is None or below is None:
-            return SuccessCriterion(metric=metric, value_key="below",
-                                    comparator="count_le", target=None, baseline=None,
-                                    text="Нужен ещё клип для числового критерия пре-айма.")
-        target = round(PLACEMENT_TARGET_FRACTION * total)
-        return SuccessCriterion(
-            metric=metric, value_key="below", comparator="count_le",
-            target=float(target), baseline=float(below),
-            text=(f"Довести число появлений с прицелом ниже линии головы до "
-                  f"≤ {target} из {total} (сейчас {below}); средний "
-                  f"вертикальный промах — к нулю."))
-    if metric == "consistency":
-        base = values.get("mae_hu")
-        if base is None:
-            return SuccessCriterion(metric=metric, value_key="mae_hu",
-                                    comparator="<", target=None, baseline=None,
-                                    text="Нужен ещё клип для числового критерия точности.")
-        target = _r(base * (1 - CONSISTENCY_IMPROVEMENT))
-        return SuccessCriterion(
-            metric=metric, value_key="mae_hu", comparator="<",
-            target=target, baseline=_r(base),
-            text=(f"Средняя ошибка в дуэли < {target} HU "
-                  f"(−{int(CONSISTENCY_IMPROVEMENT * 100)}% к текущим "
-                  f"{_r(base)} HU) на следующем клипе."))
-    if metric == "bias":
-        raw = values.get("y_bias_hu")
-        if raw is None:
-            return SuccessCriterion(metric=metric, value_key="y_bias_hu",
-                                    comparator="<", target=None, baseline=None,
-                                    text="Нужен ещё клип для числового критерия смещения.")
-        base = abs(raw)
-        target = _r(base * BIAS_HALVE_FACTOR)
-        return SuccessCriterion(
-            metric=metric, value_key="y_bias_hu", comparator="<",
-            target=target, baseline=_r(base),
-            text=(f"Систематическое вертикальное смещение |Y| < {target} HU "
-                  f"(вдвое меньше текущих {_r(base)} HU)."))
-    if metric == "correction":
-        pairs = [("X", "перелёт", values.get("x_overshoots", 0)),
-                 ("X", "недолёт", values.get("x_undershoots", 0)),
-                 ("Y", "перелёт", values.get("y_overshoots", 0)),
-                 ("Y", "недолёт", values.get("y_undershoots", 0))]
-        axis, kind, count = max(pairs, key=lambda p: p[2])
-        analysed = values.get("flicks_analysed", 0)
-        if count == 0:
-            text = "Держать чистые флики без перелёта и недолёта на следующем клипе."
-            value_key = "flicks_analysed"
+        if baseline is None:
+            text = "Нужен ещё клип для числового критерия пре-айма."
         else:
+            text = (f"Довести число появлений с прицелом ниже линии головы до "
+                    f"≤ {int(target)} из {values['total']} (сейчас {int(baseline)}); "
+                    f"средний вертикальный промах — к нулю.")
+    elif metric == "consistency":
+        if baseline is None:
+            text = "Нужен ещё клип для числового критерия точности."
+        else:
+            text = (f"Средняя ошибка в дуэли < {target} HU "
+                    f"(−{int(CONSISTENCY_IMPROVEMENT * 100)}% к текущим "
+                    f"{baseline} HU) на следующем клипе.")
+    elif metric == "bias":
+        if baseline is None:
+            text = "Нужен ещё клип для числового критерия смещения."
+        else:
+            text = (f"Систематическое вертикальное смещение |Y| < {target} HU "
+                    f"(вдвое меньше текущих {baseline} HU).")
+    elif metric == "correction":
+        if not m["directional_meaningful"]:
+            text = ("Держать чистые флики без перелёта и недолёта на следующем "
+                    "клипе.")
+        else:
+            count = int(baseline)
+            analysed = values.get("flicks_analysed", 0)
+            axis = vk[0].upper()
+            kind = "перелёт" if "overshoots" in vk else "недолёт"
             text = (f"Снизить долю {kind}ов по оси {axis}: сейчас {count} из "
                     f"{analysed} фликов — двигать в сторону чистых фликов "
                     f"(прокси-метрика, без жёсткого порога).")
-            value_key = f"{axis.lower()}_{'overshoots' if kind == 'перелёт' else 'undershoots'}"
-        return SuccessCriterion(metric=metric, value_key=value_key,
-                                comparator="direction", target=None,
-                                baseline=float(count), text=text)
-    raise ValueError(f"неизвестная метрика критерия: {metric}")
+    else:
+        raise ValueError(f"неизвестная метрика критерия: {metric}")
+    return SuccessCriterion(metric=metric, value_key=vk, comparator=comparator,
+                            target=target, baseline=baseline, text=text)
 
 
 def assemble_drill(selection: DrillSelection, finding: dict) -> Drill:
