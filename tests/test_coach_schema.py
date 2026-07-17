@@ -79,3 +79,21 @@ def test_schema_exportable_for_structured_output():
     schema = CoachReport.model_json_schema()
     assert schema["type"] == "object"
     assert "summary" in schema["properties"]
+
+
+def test_progress_explained_field_defaults_empty():
+    from coach.schema import CoachReport, ProgressExplained
+    r = CoachReport(summary="s", findings_explained=[], drills=[], caveats=[])
+    assert r.progress_explained == []
+    pe = ProgressExplained(metric="consistency", direction="improved",
+                           confidence="hypothesis", explanation="движется в нужную сторону")
+    r2 = CoachReport(summary="s", findings_explained=[], drills=[], caveats=[],
+                     progress_explained=[pe])
+    assert r2.progress_explained[0].direction == "improved"
+
+
+def test_progress_direction_is_constrained_enum():
+    with pytest.raises(ValidationError):
+        from coach.schema import ProgressExplained
+        ProgressExplained(metric="bias", direction="insufficient",   # не в enum
+                          confidence="hypothesis", explanation="x")
