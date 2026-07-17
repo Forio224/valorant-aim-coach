@@ -21,6 +21,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.database import DatabaseManager
 from backend.services.analysis_pipeline import run_pipeline
+from backend.services.history_provider import make_history_provider
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -70,7 +71,8 @@ async def process_video_task(session_id: str, video_path: str,
         result = await loop.run_in_executor(None, lambda: run_pipeline(
             video_path, player_id, clip_id=clip_id, sens=sens, edpi=edpi,
             agent=agent, map_name=map_name,
-            evidence_dir=session_evidence_dir, on_status=on_status))
+            evidence_dir=session_evidence_dir, on_status=on_status,
+            history_provider=make_history_provider(db)))
 
         frame_urls = [f"/evidence/{session_id}/{Path(p).name}"
                       for p in result.evidence_frames]

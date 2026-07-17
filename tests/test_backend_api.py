@@ -55,7 +55,7 @@ def api(tmp_path, monkeypatch):
     def fake_pipeline(video_path, player_id, *, clip_id=None, sens=None,
                       edpi=None, agent=None, map_name=None, config=None,
                       evidence_dir, on_status=None, detector=None,
-                      coach_client=None):
+                      coach_client=None, history_provider=None):
         calls.append(dict(video_path=video_path, player_id=player_id,
                           clip_id=clip_id, sens=sens, edpi=edpi, agent=agent,
                           map_name=map_name, evidence_dir=evidence_dir))

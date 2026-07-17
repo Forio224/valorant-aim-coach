@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlmodel import Field, Session, SQLModel, create_engine
+from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 # Жизненный цикл сессии: PENDING -> DETECTING -> MEASURING -> COACHING ->
 # COMPLETED | FAILED. При coach_failed сессия всё равно COMPLETED —
@@ -70,3 +70,9 @@ class DatabaseManager:
     def get_session(self, session_id: UUID) -> Optional[AnalysisSession]:
         with Session(self.engine) as session:
             return session.get(AnalysisSession, session_id)
+
+    def list_sessions_for_player(self, player_id: str):
+        with Session(self.engine) as session:
+            return list(session.exec(
+                select(AnalysisSession).where(
+                    AnalysisSession.player_id == player_id)).all())

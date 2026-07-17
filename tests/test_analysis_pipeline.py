@@ -288,3 +288,35 @@ def test_unreadable_video_raises_human_error(tmp_path):
                      config=PipelineConfig(profile_dir=str(tmp_path / "p")),
                      evidence_dir=str(tmp_path / "e"),
                      detector=FakeDetector({}), coach_client=FakeCoach())
+
+
+# --------------------------------------------------- петля прогресса (история)
+
+def test_pipeline_emits_drill_progress_from_injected_history(video, tmp_path):
+    """history_provider инжектится; drill_progress появляется в отчёте."""
+    metric = "consistency"
+
+    def provider(player_id, exclude_clip_id):
+        return [{
+            "clip_time": "2026-07-01T00:00:00", "clip_id": "prev",
+            "assignments": {metric: _DRILL_ID_BY_METRIC[metric]},
+            "findings": {metric: {"values": {"mae_hu": 99.0},
+                                  "confidence": "diagnosis"}},
+        }]
+
+    config = PipelineConfig(profile_dir=str(tmp_path / "profiles"))
+    result = run_pipeline(
+        str(video), "p1", clip_id="cur", config=config,
+        evidence_dir=str(tmp_path / "evidence"),
+        detector=FakeDetector(synthetic_heads()), coach_client=FakeCoach(),
+        history_provider=provider)
+
+    progress = result.evidence_report["drill_progress"]
+    rec = next(r for r in progress if r["metric"] == metric)
+    assert rec["anchor_clip_id"] == "prev" and rec["anchor_value"] == 99.0
+    assert rec["direction"] == "improved"        # текущий mae << 99 → улучшение
+
+
+def test_pipeline_no_history_empty_drill_progress(video, tmp_path):
+    result = _run(video, tmp_path)               # дефолтный провайдер отсутствует → []
+    assert result.evidence_report["drill_progress"] == []
