@@ -448,3 +448,48 @@ def test_hedged_progress_forbids_assertive_word():
                                  explanation="точность однозначно движется вниз")
     errors = validate_coach_report(coach, _evidence_with_progress(confidence="hypothesis"))
     assert any("однозначно" in e for e in errors)
+
+
+# ------------------- broadened causal verbs: drill-object co-occurrence fix
+
+def test_progress_explanation_objasnyaetsya_drillom_caught():
+    # «объясняется» + объект «дриллом» в одном тексте — блокируется
+    coach = _coach_with_progress(explanation="прогресс объясняется дриллом")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_progress_explanation_rezultat_trenirovki_caught():
+    # обобщённый объект-якорный паттерн «результат тренировки» — блокируется
+    coach = _coach_with_progress(
+        explanation="снижение ошибки — результат тренировки")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_findings_explained_mechanical_objasnyaetsya_not_blocked():
+    # «объясняется» без объекта-дрилла — механическое объяснение, не каузальная
+    # атрибуция дриллу; должно пройти чисто (никаких HU-чисел/кадров-фикций)
+    errors = validate_coach_report(
+        _coach(explanation="промах объясняется тем, что прицел уводит ниже "
+                            "головы", frames=[]),
+        _evidence(),
+    )
+    assert not any("каузальн" in e.lower() for e in errors)
+
+
+def test_summary_privel_k_mechanical_not_blocked():
+    # «привёл» без объекта-дрилла — не каузальная атрибуция тренировке
+    coach = _coach().model_copy(
+        update={"summary": "недострел привёл к потере дуэлей"})
+    errors = validate_coach_report(coach, _evidence())
+    assert not any("каузальн" in e.lower() for e in errors)
+
+
+def test_drill_rationale_describes_purpose_not_blocked():
+    # rationale описывает назначение дрилла без каузального глагола изменения
+    errors = validate_coach_report(
+        _coach(rationale="этот дрилл ставит стабильную микрокоррекцию"),
+        _evidence(),
+    )
+    assert not any("каузальн" in e.lower() for e in errors)
