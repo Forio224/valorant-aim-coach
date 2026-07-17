@@ -398,6 +398,50 @@ def test_causal_attribution_rejected_in_caveats():
     assert errors, "каузальность в caveats должна ловиться"
 
 
+def test_causal_attribution_rejected_in_findings_explained():
+    errors = validate_coach_report(
+        _coach(explanation="снижение ошибки — результат тренировки"), _evidence()
+    )
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_causal_attribution_rejected_in_drill_rationale():
+    errors = validate_coach_report(
+        _coach(rationale="прогресс объясняется дриллом"), _evidence()
+    )
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+# --------------------------- broadened causal regex: evasion phrases (fix)
+
+def test_causal_phrase_privela_k_caught():
+    coach = _coach_with_progress(explanation="тренировка привела к снижению ошибки")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_causal_phrase_vyzvano_praktikoy_caught():
+    coach = _coach_with_progress(explanation="изменение вызвано практикой")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_causal_phrase_sledstvie_drilla_caught():
+    coach = _coach_with_progress(explanation="это следствие дрилла")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+# ------------------------------- broadened causal regex: no over-block (fix)
+
+def test_valid_progress_explanation_not_over_blocked():
+    # «точность движется в нужную сторону» описывает изменение без
+    # атрибуции причины — расширенный regex не должен его ловить
+    coach = _coach_with_progress(explanation="точность движется в нужную сторону")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert errors == []
+
+
 def test_hedged_progress_forbids_assertive_word():
     from coach.validate import validate_coach_report
     coach = _coach_with_progress(confidence="hypothesis",
