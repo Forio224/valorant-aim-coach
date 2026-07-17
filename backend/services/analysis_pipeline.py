@@ -126,6 +126,7 @@ def samples_from_heads(heads_by_frame: HeadsByFrame,
 def _run_coach(coach_client, report: dict, frame_paths: Sequence,
                config: PipelineConfig):
     """Любая ошибка коуча -> деградация coach_failed, движок не теряется."""
+    from coach.drill_catalog import finalize_plan
     from coach.validate import run_coach_validated
     try:
         client = coach_client
@@ -137,8 +138,12 @@ def _run_coach(coach_client, report: dict, frame_paths: Sequence,
     except Exception as exc:                      # noqa: BLE001 — деградация
         logger.exception("коуч упал, отдаём частичный результат")
         return None, [f"коуч упал: {exc}"], 0, True
-    coach_dict = (result.coach_report.model_dump()
-                  if result.coach_report is not None else None)
+    if result.coach_report is None:
+        return None, result.errors, result.attempts, result.coach_failed
+    coach_dict = result.coach_report.model_dump()
+    plan = finalize_plan(result.coach_report.drills, report.get("findings", []))
+    coach_dict["drills"] = [d.model_dump() for d in plan.drills]
+    coach_dict["caveats"] = coach_dict["caveats"] + plan.extra_caveats
     return coach_dict, result.errors, result.attempts, result.coach_failed
 
 

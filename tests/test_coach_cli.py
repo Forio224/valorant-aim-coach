@@ -3,10 +3,10 @@
 import json
 from pathlib import Path
 
-from coach.schema import CoachReport
+from coach.schema import CoachReport, DrillSelection
 from coach_cli import collect_frames, main
 
-FIXTURE = Path(__file__).resolve().parent.parent / "reports" / "friend_clip3.json"
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "friend_clip3.json"
 
 
 class StubClient:
@@ -62,6 +62,35 @@ def test_main_works_without_frames_dir(tmp_path: Path):
     assert code == 0
     _, frames_arg = stub.calls[0]
     assert frames_arg == []
+
+
+class SelectionStubClient:
+    """Стаб-коуч, отдающий DrillSelection (Task 1+), как настоящий VLM."""
+
+    def generate(self, report, frame_paths, feedback=None):
+        return CoachReport(
+            summary="стаб-портрет",
+            findings_explained=[],
+            drills=[DrillSelection(
+                priority=1, drill_id="placement_t1_range_preaim_walk",
+                rationale="стаб")],
+            caveats=[],
+        )
+
+
+def test_main_writes_final_drill_from_catalog(tmp_path: Path):
+    """Офлайн-CLI тоже подставляет финальный Drill из каталога, а не
+    сырой DrillSelection VLM."""
+    out = tmp_path / "coach.json"
+    code = main([str(FIXTURE), "--out", str(out)], client=SelectionStubClient())
+    assert code == 0
+
+    written = json.loads(out.read_text(encoding="utf-8"))
+    drill = written["drills"][0]
+    assert drill["name"]
+    assert drill["tier"]
+    assert drill["criterion"]
+    assert drill["target_metric"] == "placement"
 
 
 class AlwaysInvalidStub:

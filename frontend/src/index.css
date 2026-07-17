@@ -574,6 +574,14 @@ h2 {
 .chip-kovaaks { border-color: var(--paper); color: var(--paper); }
 .chip-range { border-color: var(--dim); }
 .chip-ingame { border-color: var(--hit); color: var(--hit); }
+.chip-tier { margin-left: 0.5rem; }
+
+.drill-rationale {
+  margin-top: 0.3rem;
+  font-weight: 400;
+  font-size: 0.8rem;
+  color: var(--dim);
+}
 
 /* ── Оговорки, футер ───────────────────────────────────────── */
 .caveats ul { margin-left: 1.2rem; color: var(--dim); }

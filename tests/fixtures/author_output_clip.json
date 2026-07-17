@@ -1,0 +1,269 @@
+{
+  "schema_version": "1.1",
+  "generated_at": "2026-07-02T09:30:00+00:00",
+  "clip": {
+    "player_id": "author",
+    "clip_id": "output_clip",
+    "fps": 60.0,
+    "width": 1920,
+    "height": 1080,
+    "frame_count": 900,
+    "sens": 0.4,
+    "edpi": 320.0,
+    "agent": "Reyna",
+    "map_name": "Bind"
+  },
+  "episodes": [
+    {
+      "index": 1,
+      "track_id": 1,
+      "start_frame": 50,
+      "end_frame": 90,
+      "start_s": 0.83,
+      "end_s": 1.5,
+      "kind": "flick",
+      "distance_bucket": "close",
+      "multi_from_frame": null,
+      "duel_frames": 20,
+      "peak_closing_speed_hu_s": 38.0,
+      "birth": {
+        "dx_hu": 2.1,
+        "dy_hu": -0.5,
+        "radial_hu": 2.158
+      }
+    },
+    {
+      "index": 2,
+      "track_id": 2,
+      "start_frame": 200,
+      "end_frame": 260,
+      "start_s": 3.33,
+      "end_s": 4.33,
+      "kind": "flick",
+      "distance_bucket": "mid",
+      "multi_from_frame": null,
+      "duel_frames": 25,
+      "peak_closing_speed_hu_s": 61.4,
+      "birth": {
+        "dx_hu": -1.8,
+        "dy_hu": 0.05,
+        "radial_hu": 1.801
+      }
+    },
+    {
+      "index": 3,
+      "track_id": 3,
+      "start_frame": 400,
+      "end_frame": 445,
+      "start_s": 6.67,
+      "end_s": 7.42,
+      "kind": "flick",
+      "distance_bucket": "close",
+      "multi_from_frame": null,
+      "duel_frames": 18,
+      "peak_closing_speed_hu_s": 45.6,
+      "birth": {
+        "dx_hu": 0.9,
+        "dy_hu": 0.6,
+        "radial_hu": 1.082
+      }
+    }
+  ],
+  "findings": [
+    {
+      "metric": "placement",
+      "statement": "Пре-айм: 1 из 3 эпизодов — прицел ниже линии головы (>=0.4 HU); выше: 1; на линии: 1",
+      "values": {
+        "total": 3,
+        "below": 1,
+        "above": 1,
+        "on_line": 1,
+        "band_hu": 0.4,
+        "mean_dy_hu": 0.05
+      },
+      "confidence": "hypothesis",
+      "evidence": [
+        {
+          "frame": 50,
+          "time_s": 0.83,
+          "episode": 1,
+          "note": "появление врага справа (dx +2.10 HU): прицел ниже линии головы (dy -0.50 HU)",
+          "dx_hu": 2.1,
+          "dy_hu": -0.5,
+          "head_height_px": 64.5
+        },
+        {
+          "frame": 200,
+          "time_s": 3.33,
+          "episode": 2,
+          "note": "появление врага слева (dx -1.80 HU): прицел на линии головы (dy +0.05 HU)",
+          "dx_hu": -1.8,
+          "dy_hu": 0.05,
+          "head_height_px": 59.8
+        },
+        {
+          "frame": 400,
+          "time_s": 6.67,
+          "episode": 3,
+          "note": "появление врага справа (dx +0.90 HU): прицел выше линии головы (dy +0.60 HU)",
+          "dx_hu": 0.9,
+          "dy_hu": 0.6,
+          "head_height_px": 61.2
+        }
+      ]
+    },
+    {
+      "metric": "consistency",
+      "statement": "разброс низкий, ошибка умеренная",
+      "values": {
+        "duel_frames": 63,
+        "mae_hu": 0.842,
+        "std_hu": 0.401,
+        "iqr_hu": 0.55,
+        "p95_hu": 1.6,
+        "diagnosis": "calibrated"
+      },
+      "confidence": "diagnosis",
+      "evidence": [
+        {
+          "frame_start": 55,
+          "frame_end": 90,
+          "time_s": 0.92,
+          "episode": 1,
+          "note": "дуэльное окно (20 кадров, radial<=3 HU)",
+          "dx_hu": 1.5,
+          "dy_hu": -0.3,
+          "head_height_px": 63.0
+        },
+        {
+          "frame_start": 205,
+          "frame_end": 260,
+          "time_s": 3.42,
+          "episode": 2,
+          "note": "дуэльное окно (25 кадров, radial<=3 HU)",
+          "dx_hu": -1.1,
+          "dy_hu": 0.2,
+          "head_height_px": 60.5
+        },
+        {
+          "frame_start": 405,
+          "frame_end": 445,
+          "time_s": 6.75,
+          "episode": 3,
+          "note": "дуэльное окно (18 кадров, radial<=3 HU)",
+          "dx_hu": 0.6,
+          "dy_hu": -0.4,
+          "head_height_px": 61.8
+        }
+      ]
+    },
+    {
+      "metric": "bias",
+      "statement": "Биасы в дуэли: Y -0.170 HU (минус = прицел ниже голов), X +0.330 HU",
+      "values": {
+        "y_bias_hu": -0.17,
+        "x_bias_hu": 0.33,
+        "x_abs_hu": 0.42,
+        "y_abs_hu": 0.3,
+        "duel_frames": 63
+      },
+      "confidence": "hypothesis",
+      "evidence": [
+        {
+          "frame_start": 55,
+          "frame_end": 90,
+          "time_s": 0.92,
+          "episode": 1,
+          "note": "дуэльное окно (20 кадров, radial<=3 HU)",
+          "dx_hu": 1.5,
+          "dy_hu": -0.3,
+          "head_height_px": 63.0
+        },
+        {
+          "frame_start": 205,
+          "frame_end": 260,
+          "time_s": 3.42,
+          "episode": 2,
+          "note": "дуэльное окно (25 кадров, radial<=3 HU)",
+          "dx_hu": -1.1,
+          "dy_hu": 0.2,
+          "head_height_px": 60.5
+        },
+        {
+          "frame_start": 405,
+          "frame_end": 445,
+          "time_s": 6.75,
+          "episode": 3,
+          "note": "дуэльное окно (18 кадров, radial<=3 HU)",
+          "dx_hu": 0.6,
+          "dy_hu": -0.4,
+          "head_height_px": 61.8
+        }
+      ]
+    },
+    {
+      "metric": "correction",
+      "statement": "Коррекция на фликах (3): X перелёт 1/недолёт 1, Y перелёт 0/недолёт 1.",
+      "values": {
+        "flicks_total": 4,
+        "flicks_analysed": 3,
+        "x_overshoots": 1,
+        "x_undershoots": 1,
+        "y_overshoots": 0,
+        "y_undershoots": 1
+      },
+      "confidence": "hypothesis",
+      "caveat": "смена знака может быть стрейфом врага — прокси-метрика по output-space, не механика мыши",
+      "evidence": [
+        {
+          "frame": 70,
+          "time_s": 1.17,
+          "episode": 1,
+          "note": "X: перелёт",
+          "dx_hu": 0.8,
+          "dy_hu": -0.2,
+          "head_height_px": 62.0
+        },
+        {
+          "frame": 230,
+          "time_s": 3.83,
+          "episode": 2,
+          "note": "Y: недолёт",
+          "dx_hu": -0.5,
+          "dy_hu": 0.15,
+          "head_height_px": 59.0
+        },
+        {
+          "frame": 420,
+          "time_s": 7.0,
+          "episode": 3,
+          "note": "X: недолёт",
+          "dx_hu": 0.3,
+          "dy_hu": -0.35,
+          "head_height_px": 60.4
+        }
+      ]
+    }
+  ],
+  "profile": {
+    "player_id": "author",
+    "clips": 1,
+    "episodes_total": 3,
+    "flicks_analysed_total": 3,
+    "duel_frames_total": 63,
+    "duel_mae_hu": 0.842,
+    "std_hu": 0.401,
+    "y_bias_hu": -0.17,
+    "x_bias_hu": 0.33,
+    "placement_total": 3,
+    "placement_below": 1,
+    "placement_above": 1,
+    "placement_on_line": 1,
+    "x_overshoots": 1,
+    "x_undershoots": 1,
+    "y_overshoots": 0,
+    "y_undershoots": 1,
+    "confidence": "hypothesis",
+    "confidence_reason": "мало данных: клипов 1 < 2, дуэльных кадров 63 < 100"
+  }
+}

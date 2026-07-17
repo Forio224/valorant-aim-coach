@@ -25,9 +25,17 @@ function DrillTable({ drills }) {
           </thead>
           <tbody>
             {ordered.map((drill) => (
-              <tr key={`${drill.priority}-${drill.name}`}>
+              <tr key={drill.drill_id ?? `${drill.priority}-${drill.name}`}>
                 <td className="drill-priority">{drill.priority}</td>
-                <td className="drill-name">{drill.name}</td>
+                <td className="drill-name">
+                  {drill.name}
+                  {drill.tier != null && (
+                    <span className="chip chip-tier">tier {drill.tier}</span>
+                  )}
+                  {drill.rationale && (
+                    <div className="drill-rationale">{drill.rationale}</div>
+                  )}
+                </td>
                 <td>
                   <span className={`chip chip-${drill.platform}`}>
                     {PLATFORM_LABELS[drill.platform] ?? drill.platform}
