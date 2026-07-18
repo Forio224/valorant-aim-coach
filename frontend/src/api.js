@@ -2,7 +2,9 @@
 export const API_BASE =
   process.env.REACT_APP_API_BASE || 'http://localhost:8000';
 
-export async function uploadClip({ file, playerId, sens, edpi, agent, mapName }) {
+export async function uploadClip({
+  file, playerId, sens, edpi, agent, mapName, trainingPlatform,
+}) {
   const form = new FormData();
   form.append('file', file);
   form.append('player_id', playerId);
@@ -10,6 +12,7 @@ export async function uploadClip({ file, playerId, sens, edpi, agent, mapName })
   if (edpi) form.append('edpi', edpi);
   if (agent) form.append('agent', agent);
   if (mapName) form.append('map_name', mapName);
+  if (trainingPlatform) form.append('training_platform', trainingPlatform);
 
   const resp = await fetch(`${API_BASE}/api/v1/analysis/upload`, {
     method: 'POST',

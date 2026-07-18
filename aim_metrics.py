@@ -182,7 +182,8 @@ def _build_context(args: argparse.Namespace) -> ClipContext:
 
     meta = dict(player_id=args.player_id, clip_id=args.clip_id,
                 fps_override=args.fps, sens=args.sens, edpi=args.edpi,
-                agent=args.agent, map_name=args.map)
+                agent=args.agent, map_name=args.map,
+                training_platform=args.training_platform)
     if args.source == "gt":
         # The paired mp4 is only an fps source here; without it --fps must cover.
         video = args.video if Path(args.video).is_file() else None
@@ -217,6 +218,9 @@ def main() -> None:
     parser.add_argument("--edpi", type=float, default=None)
     parser.add_argument("--agent", default=None)
     parser.add_argument("--map", default=None)
+    parser.add_argument("--training-platform", default=None,
+                        choices=("kovaaks", "ingame"),
+                        help="где игрок готов тренироваться (user-supplied)")
     # Stage 1: print the episode table (gt mode) for manual eye-check.
     parser.add_argument("--episodes", action="store_true",
                         help="печатать таблицу эпизодов (пока только --source gt)")

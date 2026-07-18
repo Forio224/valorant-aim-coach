@@ -159,6 +159,15 @@ def test_report_matches_direct_engine_run(video, tmp_path):
         assert got_f["confidence"] == exp_f["confidence"]
 
 
+def test_training_platform_reaches_report_clip_block(video, tmp_path):
+    config = PipelineConfig(profile_dir=str(tmp_path / "profiles"))
+    result = run_pipeline(
+        str(video), "p1", clip_id="c1", training_platform="kovaaks",
+        config=config, evidence_dir=str(tmp_path / "evidence"),
+        detector=FakeDetector(synthetic_heads()), coach_client=FakeCoach())
+    assert result.evidence_report["clip"]["training_platform"] == "kovaaks"
+
+
 def test_detector_receives_video_path(video, tmp_path):
     detector = FakeDetector(synthetic_heads())
     _run(video, tmp_path, detector=detector)

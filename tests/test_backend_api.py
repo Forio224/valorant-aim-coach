@@ -53,12 +53,14 @@ def api(tmp_path, monkeypatch):
     calls: List[dict] = []
 
     def fake_pipeline(video_path, player_id, *, clip_id=None, sens=None,
-                      edpi=None, agent=None, map_name=None, config=None,
+                      edpi=None, agent=None, map_name=None,
+                      training_platform=None, config=None,
                       evidence_dir, on_status=None, detector=None,
                       coach_client=None, history_provider=None):
         calls.append(dict(video_path=video_path, player_id=player_id,
                           clip_id=clip_id, sens=sens, edpi=edpi, agent=agent,
-                          map_name=map_name, evidence_dir=evidence_dir))
+                          map_name=map_name, training_platform=training_platform,
+                          evidence_dir=evidence_dir))
         if on_status is not None:
             on_status("DETECTING")
             with_session = db_status_now(db)
@@ -138,6 +140,14 @@ def test_upload_passes_metadata_and_clip_id_to_pipeline(api):
     assert call["edpi"] == pytest.approx(320.0)
     assert call["agent"] == "Jett"
     assert call["map_name"] == "Ascent"
+
+
+def test_upload_accepts_training_platform(api):
+    client, db, main, calls = api
+    resp = _upload(client, data={"player_id": "friend",
+                                 "training_platform": "ingame"})
+    assert resp.status_code == 200
+    assert calls[0]["training_platform"] == "ingame"
 
 
 def test_on_status_writes_pipeline_status_to_db(api):

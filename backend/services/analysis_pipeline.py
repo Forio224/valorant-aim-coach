@@ -143,6 +143,7 @@ def run_pipeline(video_path: str, player_id: str, *,
                  edpi: Optional[float] = None,
                  agent: Optional[str] = None,
                  map_name: Optional[str] = None,
+                 training_platform: Optional[str] = None,
                  config: Optional[PipelineConfig] = None,
                  evidence_dir: str,
                  on_status: Optional[StatusCallback] = None,
@@ -156,7 +157,8 @@ def run_pipeline(video_path: str, player_id: str, *,
     try:
         ctx = context_for_video(str(video_path), player_id=player_id,
                                 clip_id=clip_id, sens=sens, edpi=edpi,
-                                agent=agent, map_name=map_name)
+                                agent=agent, map_name=map_name,
+                                training_platform=training_platform)
     except ValueError as exc:
         # cv2 не открыл контейнер: игроку нужно человеческое объяснение.
         raise ValueError(

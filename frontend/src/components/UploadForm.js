@@ -13,6 +13,7 @@ function UploadForm({ onSubmit, submitting }) {
   const [edpi, setEdpi] = useState('');
   const [agent, setAgent] = useState('');
   const [mapName, setMapName] = useState('');
+  const [trainingPlatform, setTrainingPlatform] = useState('');
 
   const ready = file && playerId.trim() && !submitting;
 
@@ -26,6 +27,7 @@ function UploadForm({ onSubmit, submitting }) {
       edpi: edpi.trim(),
       agent: agent.trim(),
       mapName: mapName.trim(),
+      trainingPlatform,
     });
   };
 
@@ -101,6 +103,15 @@ function UploadForm({ onSubmit, submitting }) {
             <label htmlFor="map">Карта</label>
             <input id="map" type="text" value={mapName}
               onChange={(e) => setMapName(e.target.value)} placeholder="Ascent" />
+          </div>
+          <div className="field">
+            <label htmlFor="training-platform">Тренировки</label>
+            <select id="training-platform" value={trainingPlatform}
+              onChange={(e) => setTrainingPlatform(e.target.value)}>
+              <option value="">не указано</option>
+              <option value="ingame">в Valorant (Range/DM)</option>
+              <option value="kovaaks">KovaaK&apos;s</option>
+            </select>
           </div>
         </div>
         <p className="extras-note">

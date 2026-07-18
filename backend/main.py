@@ -58,7 +58,8 @@ MAX_UPLOAD_BYTES = int(MAX_UPLOAD_MB * 1024 * 1024)
 async def process_video_task(session_id: str, video_path: str,
                              player_id: str, clip_id: str,
                              sens: float | None, edpi: float | None,
-                             agent: str | None, map_name: str | None) -> None:
+                             agent: str | None, map_name: str | None,
+                             training_platform: str | None) -> None:
     """Фон: пайплайн двигает статус сессии, итог пишется JSON-колонками."""
     sid = uuid.UUID(session_id)
 
@@ -70,7 +71,7 @@ async def process_video_task(session_id: str, video_path: str,
         session_evidence_dir = os.path.join(EVIDENCE_DIR, session_id)
         result = await loop.run_in_executor(None, lambda: run_pipeline(
             video_path, player_id, clip_id=clip_id, sens=sens, edpi=edpi,
-            agent=agent, map_name=map_name,
+            agent=agent, map_name=map_name, training_platform=training_platform,
             evidence_dir=session_evidence_dir, on_status=on_status,
             history_provider=make_history_provider(db)))
 
@@ -99,7 +100,8 @@ async def upload_video(background_tasks: BackgroundTasks,
                        sens: float | None = Form(None),
                        edpi: float | None = Form(None),
                        agent: str | None = Form(None),
-                       map_name: str | None = Form(None)):
+                       map_name: str | None = Form(None),
+                       training_platform: str | None = Form(None)):
     """Клип + player_id (людей не сливаем) + опциональный input-space."""
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
@@ -127,7 +129,8 @@ async def upload_video(background_tasks: BackgroundTasks,
     session = db.create_session(video_path, player_id=player_id,
                                 clip_id=clip_id)
     background_tasks.add_task(process_video_task, str(session.id), video_path,
-                              player_id, clip_id, sens, edpi, agent, map_name)
+                              player_id, clip_id, sens, edpi, agent, map_name,
+                              training_platform)
     return {
         "session_id": str(session.id),
         "status": session.status,
