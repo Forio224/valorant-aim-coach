@@ -18,12 +18,13 @@ import cv2
 import numpy as np
 import pytest
 
-from aim_metrics import Head, pick_target, sample_frame
+from aim_metrics import Head
 from backend.services.analysis_pipeline import (STATUS_COACHING,
                                                 STATUS_DETECTING,
                                                 STATUS_MEASURING,
                                                 PipelineConfig, run_pipeline)
 from coach.schema import CoachReport, DrillSelection, FindingExplained
+from engine.attribution import attribute_targets
 from engine.clip_context import context_for_video
 from engine.episodes import segment_episodes
 from engine.report import build_report
@@ -141,13 +142,13 @@ def test_report_matches_direct_engine_run(video, tmp_path):
     result = _run(video, tmp_path)
 
     ctx = context_for_video(str(video), player_id="p1", clip_id="c1")
-    crosshair = ctx.crosshair
-    samples = []
-    for frame_idx in sorted(heads):
-        target = pick_target(heads[frame_idx], crosshair)
-        if target is not None:
-            samples.append(sample_frame(frame_idx, target, crosshair))
-    expected = build_report(ctx, samples, segment_episodes(heads, ctx))
+    # Тот же поток, что в пайплайне (Фаза 3): атрибуция цели → отфильтрованные
+    # сэмплы + мета в consistency. Синтетика — одна голова на кадр, поэтому
+    # числа совпадают с наивной «ближайшей», но контракт значений — новый.
+    episodes = segment_episodes(heads, ctx)
+    attribution = attribute_targets(episodes, ctx)
+    samples = [s for s in attribution.samples if s.track_id is not None]
+    expected = build_report(ctx, samples, episodes, attribution=attribution)
 
     got = result.evidence_report
     assert got["schema_version"] == expected["schema_version"]

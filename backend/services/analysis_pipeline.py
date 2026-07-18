@@ -20,8 +20,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence
 
-from aim_metrics import (DEFAULT_DUEL_HU, FrameSample, Head, pick_target,
-                         sample_frame)
+from engine.geometry import DEFAULT_DUEL_HU, Head
+from engine.attribution import attribute_targets
 from engine.clip_context import context_for_video
 from engine.episodes import HeadsByFrame, segment_episodes
 from engine.evidence_frames import DEFAULT_EVIDENCE_CAP, render_evidence_frames
@@ -109,18 +109,6 @@ def detect_heads_yolo(video_path: str, config: PipelineConfig) -> HeadsByFrame:
     return heads_by_frame
 
 
-def samples_from_heads(heads_by_frame: HeadsByFrame,
-                       crosshair) -> List[FrameSample]:
-    """Паспортные сэмплы: ближайшая к прицелу голова на каждом кадре
-    (тот же контракт, что iter_gt_samples / iter_yolo_samples)."""
-    samples: List[FrameSample] = []
-    for frame_idx in sorted(heads_by_frame):
-        target = pick_target(list(heads_by_frame[frame_idx]), crosshair)
-        if target is not None:
-            samples.append(sample_frame(frame_idx, target, crosshair))
-    return samples
-
-
 # ── Коуч (B1+B2), изолированный от пайплайна ─────────────────────────────────
 
 def _run_coach(coach_client, report: dict, frame_paths: Sequence,
@@ -180,8 +168,12 @@ def run_pipeline(video_path: str, player_id: str, *,
     heads_by_frame = detect(str(video_path))
 
     notify(STATUS_MEASURING)
-    samples = samples_from_heads(heads_by_frame, ctx.crosshair)
     episodes = segment_episodes(heads_by_frame, ctx, duel_hu=cfg.duel_hu)
+    # Фаза 3: атрибуция цели по намерению вместо «ближайшей на каждом кадре» —
+    # consistency/bias/профиль кормятся сэмплами с назначенным треком (спорные
+    # кадры исключены из механики, но честно посчитаны в consistency).
+    attribution = attribute_targets(episodes, ctx, duel_hu=cfg.duel_hu)
+    samples = [s for s in attribution.samples if s.track_id is not None]
 
     # Продольное накопление ДО отчёта — свежий клип входит в свой же профиль.
     record = build_clip_record(ctx, samples, episodes, duel_hu=cfg.duel_hu)
@@ -192,7 +184,8 @@ def run_pipeline(video_path: str, player_id: str, *,
     drill_history = provider(player_id, ctx.clip_id)
 
     report = build_report(ctx, samples, episodes, duel_hu=cfg.duel_hu,
-                          profile=profile, drill_history=drill_history)
+                          profile=profile, drill_history=drill_history,
+                          attribution=attribution)
     frame_paths = render_evidence_frames(str(video_path), report,
                                          evidence_dir, cap=cfg.evidence_cap)
 

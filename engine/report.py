@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
 from engine.geometry import DEFAULT_DUEL_HU, FrameSample, compute_passport
+from engine.attribution import AttributionResult
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
@@ -133,15 +134,23 @@ def _placement_finding(episodes: Sequence[Episode], ctx: ClipContext) -> dict:
 
 
 def _consistency_finding(samples: Sequence[FrameSample], duel_evidence: List[dict],
-                         duel_hu: float) -> dict:
+                         duel_hu: float,
+                         attribution: Optional[AttributionResult] = None) -> dict:
     rep = compute_consistency(samples, duel_hu=duel_hu)
+    values = {"duel_frames": rep.duel_frames,
+              "mae_hu": _r(rep.duel_mae_hu), "std_hu": _r(rep.std_hu),
+              "iqr_hu": _r(rep.iqr_hu), "p95_hu": _r(rep.p95_hu),
+              "diagnosis": rep.diagnosis}
+    if attribution is not None:
+        # Движок честно показывает, сколько кадров было спорных, вместо того
+        # чтобы молча смешивать врагов (Фаза 3, атрибуция цели).
+        values["switches"] = attribution.switches
+        values["contested_frames"] = attribution.contested_frames
+        values["camera_confidence"] = attribution.camera_confidence
     return {
         "metric": "consistency",
         "statement": _DIAGNOSIS_TEXT[rep.diagnosis],
-        "values": {"duel_frames": rep.duel_frames,
-                   "mae_hu": _r(rep.duel_mae_hu), "std_hu": _r(rep.std_hu),
-                   "iqr_hu": _r(rep.iqr_hu), "p95_hu": _r(rep.p95_hu),
-                   "diagnosis": rep.diagnosis},
+        "values": values,
         "confidence": _confidence(rep.duel_frames,
                                   MIN_DUEL_FRAMES_FOR_DIAGNOSIS),
         "evidence": duel_evidence,
@@ -238,8 +247,13 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
                  episodes: Sequence[Episode],
                  duel_hu: float = DEFAULT_DUEL_HU,
                  profile: Optional[PlayerProfile] = None,
-                 drill_history: Sequence = ()) -> dict:
-    """The full evidence-tagged portrait of one clip (+ longitudinal profile)."""
+                 drill_history: Sequence = (),
+                 attribution: Optional[AttributionResult] = None) -> dict:
+    """The full evidence-tagged portrait of one clip (+ longitudinal profile).
+
+    `attribution` (Фаза 3): когда `samples` пришли из `attribute_targets`,
+    consistency честно доносит switches/contested_frames/camera_confidence.
+    """
     duel_evidence = _duel_window_evidence(episodes, ctx, duel_hu)
     report = {
         "schema_version": SCHEMA_VERSION,
@@ -248,7 +262,7 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
         "episodes": _episodes_block(episodes, ctx),
         "findings": [
             _placement_finding(episodes, ctx),
-            _consistency_finding(samples, duel_evidence, duel_hu),
+            _consistency_finding(samples, duel_evidence, duel_hu, attribution),
             _bias_finding(samples, duel_evidence, duel_hu),
             _correction_finding(episodes, ctx, duel_hu),
         ],
