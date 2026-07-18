@@ -259,6 +259,24 @@ def test_drill_rationale_fabricated_hu_caught():
     assert any("8.88" in e for e in errors)
 
 
+# --------------------------------------------- класс 2b: см-числа (Фаза 4)
+
+def test_invented_cm_number_is_blocked():
+    errors = validate_coach_report(
+        _coach(explanation="Перелёт эквивалентен 12.3 см хода мыши."),
+        _evidence(),
+    )
+    assert any("12.3" in e and "см" in e for e in errors)
+
+
+def test_cm_per_360_from_clip_block_passes():
+    ev = _evidence()
+    ev["clip"]["cm_per_360"] = 46.65
+    errors = validate_coach_report(
+        _coach(explanation="Твой оборот — 46.65 см (MAE 1.349 HU)."), ev)
+    assert errors == []
+
+
 # ------------------------------------------------- ретрай и деградация
 
 class RetryStub:

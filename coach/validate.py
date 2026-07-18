@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 RETRY_LIMIT = 2  # первый вызов + один повтор
 
 _HU_NUMBER_RE = re.compile(r"([+-]?\d+(?:[.,]\d+)?)\s*HU\b")
+_CM_NUMBER_RE = re.compile(r"([+-]?\d+(?:[.,]\d+)?)\s*(?:см|cm)\b", re.IGNORECASE)
 
 # утвердительные слова, запрещённые в объяснениях гипотез (границы слов:
 # «недостаточно» не должно срабатывать как «точно»)
@@ -98,6 +99,26 @@ def _hu_numbers_in_text(text: str) -> List[float]:
     ]
 
 
+def _cm_numbers_in_text(text: str) -> List[float]:
+    return [float(m.group(1).replace(",", "."))
+            for m in _CM_NUMBER_RE.finditer(text)]
+
+
+def _check_cm_numbers(text: str, pool: List[float], where: str) -> List[str]:
+    """Каждое см-число текста должно совпасть с числом движка (по модулю,
+    с допуском на округление) — та же анти-выдумка, что для HU."""
+    errors = []
+    for match in _CM_NUMBER_RE.finditer(text):
+        raw = match.group(1)
+        value = float(raw.replace(",", "."))
+        digits = raw.replace(",", ".")
+        decimals = len(digits.split(".")[1]) if "." in digits else 0
+        tolerance = 0.5 * 10 ** -decimals + 1e-9
+        if not any(abs(abs(value) - abs(known)) <= tolerance for known in pool):
+            errors.append(f"число {raw} см ({where}) не найдено в evidence-JSON")
+    return errors
+
+
 def _known_frames(evidence: dict) -> set:
     """Все номера кадров, явно присутствующие в evidence-JSON."""
     frames = set()
@@ -144,6 +165,14 @@ def _known_numbers(evidence: dict) -> List[float]:
     for rec in evidence.get("drill_progress", []):
         pool.extend(float(rec[k]) for k in ("anchor_value", "current_value", "delta")
                     if _is_number(rec.get(k)))
+    # Фаза 4: cm-числа. clip-блок в пул раньше не входил — расширяем ЯВНО;
+    # flick_overshoot_cm_equiv_median попадает автоматически через values.
+    clip = evidence.get("clip") or {}
+    if _is_number(clip.get("cm_per_360")):
+        pool.append(float(clip["cm_per_360"]))
+    for finding in evidence.get("findings", []):
+        pool.extend(_cm_numbers_in_text(finding.get("statement") or ""))
+        pool.extend(_cm_numbers_in_text(finding.get("caveat") or ""))
     return pool
 
 
@@ -189,6 +218,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                     f"кадр {frame} ({where}) не существует в evidence-JSON"
                 )
         errors.extend(_check_hu_numbers(fe.explanation, numbers_known, where))
+        errors.extend(_check_cm_numbers(fe.explanation, numbers_known, where))
         errors.extend(_check_causal(fe.explanation, where))
         if fe.confidence in _HEDGED_CONFIDENCES:
             stopword = _ASSERTIVE_STOPWORDS_RE.search(fe.explanation)
@@ -199,6 +229,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                 )
 
     errors.extend(_check_hu_numbers(coach.summary, numbers_known, "summary"))
+    errors.extend(_check_cm_numbers(coach.summary, numbers_known, "summary"))
     errors.extend(_check_causal(coach.summary, "summary"))
     for caveat in coach.caveats:
         errors.extend(_check_causal(caveat, "caveats"))
@@ -219,6 +250,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                 f"первый клип — только tier-1 дриллы"
             )
         errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
+        errors.extend(_check_cm_numbers(drill.rationale, numbers_known, where))
         errors.extend(_check_causal(drill.rationale, where))
 
     progress_by_metric = {r["metric"]: r for r in evidence.get("drill_progress", [])}
@@ -235,6 +267,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
             errors.append(f"{where}: коуч заявил confidence '{pe.confidence}', "
                           f"у движка '{rec['confidence']}'")
         errors.extend(_check_hu_numbers(pe.explanation, numbers_known, where))
+        errors.extend(_check_cm_numbers(pe.explanation, numbers_known, where))
         errors.extend(_check_causal(pe.explanation, where))
         if pe.confidence in _HEDGED_CONFIDENCES:
             stopword = _ASSERTIVE_STOPWORDS_RE.search(pe.explanation)

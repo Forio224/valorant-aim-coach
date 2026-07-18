@@ -108,6 +108,37 @@ def test_correction_evidence_points_at_the_flip_frame():
     assert 7 in flip_frames                  # known synthetic overshoot frame
 
 
+# ── Input-space (Фаза 4): cm/360 в clip-блоке, см-эквивалент перелёта ────────
+
+
+def _ctx_with_edpi(edpi=280.0) -> ClipContext:
+    return ClipContext(player_id="p1", clip_id="c1", fps=60.0,
+                       width=1920, height=1080, frame_count=600, edpi=edpi)
+
+
+def test_clip_block_carries_cm_per_360_and_reason():
+    _, samples, episodes = overshoot_clip()
+    with_edpi = build_report(_ctx_with_edpi(), samples, episodes)["clip"]
+    assert with_edpi["cm_per_360"] == pytest.approx(46.65, abs=0.01)
+    assert with_edpi["cm_unavailable_reason"] is None
+    without = build_report(make_ctx(), samples, episodes)["clip"]
+    assert without["cm_per_360"] is None
+    assert without["cm_unavailable_reason"] == "нет eDPI"
+
+
+def test_correction_values_have_cm_equiv_median_or_none():
+    _, samples, episodes = overshoot_clip()
+    with_edpi = build_report(_ctx_with_edpi(), samples, episodes)
+    corr = next(f for f in with_edpi["findings"] if f["metric"] == "correction")
+    assert "flick_overshoot_cm_equiv_median" in corr["values"]
+    val = corr["values"]["flick_overshoot_cm_equiv_median"]
+    assert val is None or isinstance(val, float)
+    without = build_report(make_ctx(), samples, episodes)
+    corr2 = next(f for f in without["findings"] if f["metric"] == "correction")
+    assert corr2["values"]["flick_overshoot_cm_equiv_median"] is None
+    report_to_json(without)                    # сериализация не падает
+
+
 # ── Serialisation ────────────────────────────────────────────────────────────
 
 

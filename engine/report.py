@@ -11,12 +11,14 @@ import json
 import math
 from dataclasses import asdict
 from datetime import datetime, timezone
+from statistics import median
 from typing import List, Optional, Sequence
 
 from engine.geometry import DEFAULT_DUEL_HU, FrameSample, compute_passport
 from engine.attribution import AttributionResult
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
+from engine.input_space import cm_per_360, cm_unavailable_reason, hu_to_cm_equiv
 from engine.version import METRICS_VERSION
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
 from engine.metrics.correction import _AXIS_LABELS, compute_correction
@@ -222,6 +224,20 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                      f" (пик доводки)"),
             **_geom(_sample_at(pep, p.overshoot_evidence_frame)),
         })
+    # см-эквивалент перелёта: те же usable-флики, что HU-медиана; конверсия по
+    # высоте головы на кадре улики перелёта. 0-перелёт конвертируется в 0 см.
+    cm_vals = []
+    for p in ph.phases:
+        if not p.settled or p.flick_overshoot_hu is None:
+            continue
+        if p.overshoot_evidence_frame is None:
+            cm_vals.append(0.0 if p.flick_overshoot_hu == 0 else None)
+            continue
+        pep = episodes[p.episode_index - 1]
+        hh = _sample_at(pep, p.overshoot_evidence_frame).head_height_px
+        cm_vals.append(hu_to_cm_equiv(p.flick_overshoot_hu, hh, ctx))
+    cm_known = [v for v in cm_vals if v is not None]
+    cm_median = _r(median(cm_known), 2) if cm_known else None
     return {
         "metric": "correction",
         "statement": (f"Коррекция на фликах ({rep.flicks_analysed}): X перелёт"
@@ -239,6 +255,7 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                    "settle_time_frames_median": ph.settle_time_frames_median,
                    "settle_time_ms_median": settle_ms,
                    "settle_jitter_hu_median": ph.settle_jitter_hu_median,
+                   "flick_overshoot_cm_equiv_median": cm_median,
                    "correction_path_hu_median": ph.correction_path_hu_median,
                    "flicks_arrived": ph.flicks_arrived,
                    "flicks_settled": ph.flicks_settled,
@@ -246,9 +263,22 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                    "phase_confidence": ph.phase_confidence},
         "confidence": _confidence(rep.flicks_analysed, MIN_FLICKS_FOR_DIAGNOSIS),
         "caveat": ("смена знака может быть стрейфом врага — прокси-метрика по"
-                   " output-space, не механика мыши"),
+                   " output-space, не механика мыши"
+                   + ("; см — эквивалент хода мыши, не измерение (стрейф врага"
+                      " неотделим); валидно для стрельбы с бедра — Operator в"
+                      " прицеле ≈ 2.5×, сигнала о зуме в данных нет"
+                      if cm_median is not None else "")),
         "evidence": evidence,
     }
+
+
+def _clip_block(ctx: ClipContext) -> dict:
+    block = asdict(ctx)
+    # Input-space (Фаза 4): sens/eDPI конвертируются в физику руки. Причины
+    # отсутствия раздельны: cm/360 живёт на stretched res, cm-эквивалент — нет.
+    block["cm_per_360"] = _r(cm_per_360(ctx.edpi), 2)
+    block["cm_unavailable_reason"] = cm_unavailable_reason(ctx)
+    return block
 
 
 # ── Entry points ─────────────────────────────────────────────────────────────
@@ -271,7 +301,7 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
         # полю, иначе смена методики Фазы 3 посчиталась бы прогрессом игрока.
         "metrics_version": METRICS_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "clip": asdict(ctx),
+        "clip": _clip_block(ctx),
         "episodes": _episodes_block(episodes, ctx),
         "findings": [
             _placement_finding(episodes, ctx),
