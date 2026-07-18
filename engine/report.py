@@ -13,7 +13,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
-from aim_metrics import DEFAULT_DUEL_HU, FrameSample, compute_passport
+from engine.geometry import DEFAULT_DUEL_HU, FrameSample, compute_passport
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency

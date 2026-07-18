@@ -13,7 +13,7 @@ import statistics
 from dataclasses import dataclass
 from typing import List, Sequence
 
-from aim_metrics import DEFAULT_DUEL_HU, FrameSample
+from engine.geometry import DEFAULT_DUEL_HU, FrameSample
 
 # Diagnosis thresholds (HU, duel-scoped). Validated GT clips sit around
 # std 0.67-0.76 / MAE 1.34-1.39 — i.e. "consistent, calibration-limited".

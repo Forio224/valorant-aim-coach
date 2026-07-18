@@ -15,7 +15,7 @@ This measures output-space correction, NOT raw mouse mechanics.
 from dataclasses import dataclass
 from typing import List, Optional, Sequence, Tuple
 
-from aim_metrics import FrameSample
+from engine.geometry import FrameSample
 from engine.clip_context import ClipContext
 from engine.episodes import DEFAULT_DUEL_HU, Episode
 
