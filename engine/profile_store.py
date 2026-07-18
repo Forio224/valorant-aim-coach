@@ -22,6 +22,7 @@ from engine.episodes import Episode
 from engine.metrics.consistency import compute_consistency
 from engine.metrics.correction import compute_correction
 from engine.metrics.placement import compute_placement
+from engine.version import METRICS_VERSION
 
 # Below ANY of these the longitudinal verdict stays a hypothesis.
 MIN_CLIPS_FOR_DIAGNOSIS = 2
@@ -71,6 +72,7 @@ def build_clip_record(ctx: ClipContext, samples: Sequence[FrameSample],
     return {
         "clip_id": ctx.clip_id,
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "metrics_version": METRICS_VERSION,   # запись без поля = версия 1
         "fps": ctx.fps,
         "frames_measured": passport.frames_measured,
         "duel": {
@@ -157,12 +159,20 @@ def _sum_field(clips: List[dict], section: str, field: str) -> int:
 
 
 def aggregate_profile(player_doc: dict) -> PlayerProfile:
-    clips: List[dict] = list(player_doc["clips"].values())
+    # Только записи ТЕКУЩЕЙ методики: определения mae/placement.below менялись,
+    # смешивать методики нельзя (записи без поля = версия 1).
+    all_clips: List[dict] = list(player_doc["clips"].values())
+    clips = [c for c in all_clips
+             if c.get("metrics_version", 1) == METRICS_VERSION]
+    dropped = len(all_clips) - len(clips)
     duel_weights = [(c["duel"], c["duel"]["frames"]) for c in clips]
     episodes_total = _sum_field(clips, "episodes", "total")
     duel_frames_total = sum(c["duel"]["frames"] for c in clips)
     confidence, reason = _confidence(len(clips), episodes_total,
                                      duel_frames_total)
+    if dropped:
+        reason = (f"{reason}; клипов по прежней методике: {dropped} — "
+                  f"в сравнение не входят")
     return PlayerProfile(
         player_id=player_doc["player_id"],
         clips=len(clips),

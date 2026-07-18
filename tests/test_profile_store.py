@@ -20,6 +20,7 @@ from engine.profile_store import (
     load_player,
     save_clip,
 )
+from engine.version import METRICS_VERSION
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 H = 20.0
@@ -109,6 +110,33 @@ def test_enough_clips_episodes_and_frames_is_diagnosis(tmp_path):
     assert profile.episodes_total == 8
     assert profile.duel_frames_total == 480
     assert profile.confidence == "diagnosis"
+
+
+# ── Версионирование методики (Фаза 3) ────────────────────────────────────────
+
+
+def test_build_clip_record_stamps_current_metrics_version(tmp_path):
+    ctx = make_ctx("p1", "cA")
+    samples, episodes = synthetic_clip(1.0)
+    record = build_clip_record(ctx, samples, episodes)
+    assert record["metrics_version"] == METRICS_VERSION
+
+
+def test_stale_metrics_version_excluded_from_aggregate(tmp_path):
+    """Запись по прежней методике (без поля = v1) не входит в агрегат, а причина
+    названа в confidence_reason — иначе смена методики смешалась бы с прогрессом."""
+    ctx = make_ctx("p1", "cA")
+    samples, episodes = synthetic_clip(1.0, n_frames=60, n_episodes=8)
+    save_clip(str(tmp_path), ctx, build_clip_record(ctx, samples, episodes))
+
+    doc = load_player(str(tmp_path), "p1")
+    stale = dict(next(iter(doc["clips"].values())))
+    stale.pop("metrics_version", None)           # эмулируем запись v1
+    doc["clips"]["old_clip"] = stale
+
+    profile = aggregate_profile(doc)
+    assert profile.clips == 1                     # только текущая версия
+    assert "прежней методике" in profile.confidence_reason
 
 
 # ── Report text ──────────────────────────────────────────────────────────────

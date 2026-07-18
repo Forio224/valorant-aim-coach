@@ -17,6 +17,7 @@ from engine.geometry import DEFAULT_DUEL_HU, FrameSample, compute_passport
 from engine.attribution import AttributionResult
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
+from engine.version import METRICS_VERSION
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
 from engine.metrics.correction import _AXIS_LABELS, compute_correction
 from engine.metrics.drill_progress import compute_drill_progress
@@ -264,6 +265,9 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
     duel_evidence = _duel_window_evidence(episodes, ctx, duel_hu)
     report = {
         "schema_version": SCHEMA_VERSION,
+        # Методика измерения: 2B-петля прогресса фильтрует историю по этому
+        # полю, иначе смена методики Фазы 3 посчиталась бы прогрессом игрока.
+        "metrics_version": METRICS_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "clip": asdict(ctx),
         "episodes": _episodes_block(episodes, ctx),

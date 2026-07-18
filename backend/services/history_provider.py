@@ -9,14 +9,25 @@
 import json
 from typing import Callable, List, Optional, Sequence
 
+from engine.version import METRICS_VERSION
+
 
 def build_clip_snapshots(sessions: Sequence[dict],
                          exclude_clip_id: str) -> List[dict]:
-    """Сессии (уже распарсенные dict-и) → ClipSnapshot-и. Без БД (тестируемо)."""
+    """Сессии (уже распарсенные dict-и) → ClipSnapshot-и. Без БД (тестируемо).
+
+    Контракт METRICS_VERSION (Фаза 3): в anchor-серии идут только клипы текущей
+    методики. Отчёт без поля = версия 1 (до атрибуции цели / гейта пре-айма);
+    сравнивать его числа с текущими нельзя — иначе смена методики отрапортуется
+    как прогресс игрока.
+    """
     by_clip: dict = {}
     for s in sessions:
-        if s["clip_id"] == exclude_clip_id or s.get("evidence_report") is None:
+        ev = s.get("evidence_report")
+        if s["clip_id"] == exclude_clip_id or ev is None:
             continue
+        if ev.get("metrics_version", 1) != METRICS_VERSION:
+            continue                       # клип по прежней методике — не сравниваем
         prev = by_clip.get(s["clip_id"])
         if prev is None or s["created_at"] > prev["created_at"]:
             by_clip[s["clip_id"]] = s
