@@ -89,7 +89,7 @@ def build_clip_record(ctx: ClipContext, samples: Sequence[FrameSample],
             "unengaged": kinds.count("unengaged"),
         },
         "placement": {
-            "total": placement.total_episodes,
+            "total": placement.total_gated,        # только прошедшие гейт пре-айма
             "below": placement.n_below,
             "above": placement.n_above,
             "on_line": placement.n_on_line,

@@ -15,6 +15,7 @@ from engine.clip_context import ClipContext
 from engine.episodes import Episode, episodes_for_gt, segment_episodes
 from engine.geometry import MIN_HEAD_PX, pick_target, sample_frame
 from engine.metrics.consistency import compute_consistency
+from engine.metrics.placement import PLACEMENT_MAX_BIRTH_HU
 from engine.report import build_report, report_to_json
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -92,8 +93,10 @@ def test_placement_evidence_anchors_to_birth_frames():
     ctx, samples, episodes = overshoot_clip()
     report = build_report(ctx, samples, episodes)
     placement = next(f for f in report["findings"] if f["metric"] == "placement")
-    assert {e["frame"] for e in placement["evidence"]} == \
-        {ep.start_frame for ep in episodes}
+    # Гейт пре-айма: улики только для появлений в зоне (далёкий флик отсеян).
+    gated_births = {ep.start_frame for ep in episodes
+                    if ep.samples[0].radial_hu <= PLACEMENT_MAX_BIRTH_HU}
+    assert {e["frame"] for e in placement["evidence"]} == gated_births
 
 
 def test_correction_evidence_points_at_the_flip_frame():

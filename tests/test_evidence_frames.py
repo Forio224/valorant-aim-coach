@@ -131,7 +131,9 @@ def test_collect_dedupes_frames_and_merges_notes():
 def test_collect_caps_and_prefers_point_evidence_over_windows():
     _, report = synthetic_report()
     targets = collect_evidence_targets(report, cap=2)
-    assert [t.frame_idx for t in targets] == [0, 6]   # birth + overshoot flip
+    # Пре-айм-гейт отсеял рождение флика (12 HU): точечные улики — флипы
+    # коррекции (кадры 6/7), а не оконные, что и проверяет приоритет.
+    assert [t.frame_idx for t in targets] == [6, 7]
 
 
 def test_collect_rejects_reports_without_geometry():

@@ -121,13 +121,20 @@ def _placement_finding(episodes: Sequence[Episode], ctx: ClipContext) -> dict:
         })
     return {
         "metric": "placement",
-        "statement": (f"Пре-айм: {rep.n_below} из {rep.total_episodes} эпизодов"
-                      f" — прицел ниже линии головы (≥{rep.band_hu:g} HU);"
-                      f" выше: {rep.n_above}; на линии: {rep.n_on_line}"),
-        "values": {"total": rep.total_episodes, "below": rep.n_below,
+        "statement": (f"Пре-айм: {rep.n_below} из {rep.total_gated} появлений"
+                      f" в зоне (≤{rep.max_birth_hu:g} HU) — прицел ниже линии"
+                      f" головы (≥{rep.band_hu:g} HU); выше: {rep.n_above};"
+                      f" на линии: {rep.n_on_line}"
+                      f" (всего появлений: {rep.total_seen})"),
+        # total = total_gated: вход build_criterion и уверенности считается от
+        # отсеянного множества (пре-айм честно опускается до гипотезы там, где
+        # уверенность держалась на не-пре-айм появлениях).
+        "values": {"total": rep.total_gated, "below": rep.n_below,
                    "above": rep.n_above, "on_line": rep.n_on_line,
-                   "band_hu": rep.band_hu, "mean_dy_hu": _r(rep.mean_dy_hu)},
-        "confidence": _confidence(rep.total_episodes,
+                   "band_hu": rep.band_hu, "mean_dy_hu": _r(rep.mean_dy_hu),
+                   "median_dy_hu": _r(rep.median_dy_hu),
+                   "total_seen": rep.total_seen, "total_gated": rep.total_gated},
+        "confidence": _confidence(rep.total_gated,
                                   MIN_EPISODES_FOR_DIAGNOSIS),
         "evidence": evidence,
     }
