@@ -88,6 +88,16 @@ def _flick_frames(pairs, start: int = 100, kind: str = "flick",
                    peak_closing_speed_hu_s=speed)
 
 
+def test_flick_never_entering_duel_zone_skipped_not_crash():
+    # ревью Фазы 4: флик, не вошедший в duel_hu, ронял compute_correction
+    # StopIteration из _analysis_window — судить нечего, но падать нельзя
+    ep = _flick_frames([(i, 20.0 - i) for i in range(10)])   # min radial 11
+    rep = compute_correction([ep], make_ctx())
+    assert rep.flicks_total == 1
+    assert rep.flicks_analysed == 0
+    assert rep.verdicts == ()
+
+
 def test_sparse_flick_excluded_from_correction():
     holey = [(0, 3.0), (3, 1.0), (6, 0.6), (12, 0.3), (13, 0.3), (14, 0.3)]
     ep = _flick_frames(holey)

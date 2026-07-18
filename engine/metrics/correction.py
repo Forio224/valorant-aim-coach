@@ -115,8 +115,15 @@ def _classify_axis(frames: List[int], values: List[float], fps: float,
 
 def _analysis_window(ep: Episode, duel_hu: float,
                      settle_frames: int) -> List[FrameSample]:
-    """Birth -> duel entry + settle margin: where the correction shows up."""
-    entry = next(s.frame_idx for s in ep.samples if s.radial_hu <= duel_hu)
+    """Birth -> duel entry + settle margin: where the correction shows up.
+
+    Пустой список, если флик так и не вошёл в дуэльную зону (быстрый пролёт
+    мимо): судить о коррекции нечего, но падать нельзя (2C-фикс ревью Фазы 4).
+    """
+    entry = next((s.frame_idx for s in ep.samples if s.radial_hu <= duel_hu),
+                 None)
+    if entry is None:
+        return []
     return [s for s in ep.samples if s.frame_idx <= entry + settle_frames]
 
 
@@ -138,6 +145,8 @@ def compute_correction(episodes: Sequence[Episode], ctx: ClipContext,
             sparse += 1            # посчитан, но исключён из вердиктов/счётчиков
             continue
         window = _analysis_window(ep, duel_hu, settle_frames)
+        if not window:
+            continue                   # не вошёл в duel_hu — вердикта нет
         frames = [s.frame_idx for s in window]
         x, x_frame = _classify_axis(frames, [s.dx_hu for s in window],
                                     ctx.fps, deadband_hu)
