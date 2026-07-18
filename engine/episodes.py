@@ -57,6 +57,17 @@ class Episode:
     peak_closing_speed_hu_s: float  # fastest approach toward the crosshair
 
 
+# Гейт плотности детекций (Фаза 4): доля кадров эпизода, где голова реально
+# детектирована. Разреженный флик-трек «слишком дырявый» для фаз-метрик И для
+# перелёта — гейт применяют оба потребителя.
+MIN_FLICK_DETECTION_DENSITY = 0.7   # некалибр.: грубее — вердикты по дыркам
+
+
+def detection_density(ep: Episode) -> float:
+    """Доля кадров эпизода с детекцией головы (1.0 = трек без дырок)."""
+    return len(ep.samples) / (ep.end_frame - ep.start_frame + 1)
+
+
 # ── Association (yolo path: detections carry no identity) ────────────────────
 
 def associate_tracks(heads_by_frame: HeadsByFrame, ctx: ClipContext,

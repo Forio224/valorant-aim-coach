@@ -85,6 +85,17 @@ def test_jitter_none_when_fewer_than_two_adjacent_pairs():
     assert rep.settle_jitter_hu_median is None  # и отчёт не падает (нет TypeError)
 
 
+def test_sparse_flick_counted_but_excluded():
+    # density = 6 сэмплов / 15 кадров = 0.4 < 0.7 — sparse
+    holey = [(0, 3.0), (3, 1.0), (6, 0.6), (12, 0.3), (13, 0.3), (14, 0.3)]
+    dense = _x([3, 1, 0.6, 0.3, 0.3, 0.3])
+    rep = compute_flick_phases([_flick_frames(holey, start=100, track_id=1),
+                                _flick(dense, start=300, track_id=2)], _ctx())
+    assert rep.flicks_sparse == 1
+    assert rep.flicks_analysed == 1        # sparse не в знаменателе
+    assert len(rep.phases) == 1            # и не в phases
+
+
 def test_jitter_median_gated_by_flicks_jitter_n():
     # 3 settled-флика (хватает на diagnosis), но jitter дал только один —
     # медиана рывковости обязана молчать. У clean длинный подход: сегмент b..s

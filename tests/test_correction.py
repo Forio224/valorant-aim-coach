@@ -9,9 +9,9 @@ from pathlib import Path
 
 import pytest
 
-from aim_metrics import Head
+from aim_metrics import FrameSample, Head
 from engine.clip_context import ClipContext
-from engine.episodes import episodes_for_gt, segment_episodes
+from engine.episodes import Episode, episodes_for_gt, segment_episodes
 from engine.metrics.correction import (
     CorrectionReport,
     compute_correction,
@@ -72,6 +72,28 @@ def test_x_undershoot_stall_then_resume():
     v = report.verdicts[0]
     assert v.x == "undershoot"
     assert report.x_undershoots == 1
+
+
+def _flick_frames(pairs, start: int = 100, kind: str = "flick",
+                  speed: float = 50.0, track_id: int = 1) -> Episode:
+    """Эпизод из (frame_offset, radial по X): кадры явные — для дырок (Фаза 4)."""
+    samples = tuple(
+        FrameSample(frame_idx=start + fo, dx_hu=r, dy_hu=0.0,
+                    radial_hu=abs(r), head_height_px=H)
+        for fo, r in pairs)
+    return Episode(track_id=track_id, start_frame=start,
+                   end_frame=start + pairs[-1][0], samples=samples,
+                   kind=kind, distance_bucket="mid", multi_enemy=False,
+                   multi_from_frame=None, duel_frames=0,
+                   peak_closing_speed_hu_s=speed)
+
+
+def test_sparse_flick_excluded_from_correction():
+    holey = [(0, 3.0), (3, 1.0), (6, 0.6), (12, 0.3), (13, 0.3), (14, 0.3)]
+    ep = _flick_frames(holey)
+    rep = compute_correction([ep], make_ctx())
+    assert rep.flicks_sparse == 1
+    assert rep.flicks_analysed == 0
 
 
 # ── Y axis + filtering ───────────────────────────────────────────────────────

@@ -17,7 +17,8 @@ from statistics import median, pstdev
 from typing import List, Optional, Sequence, Tuple
 
 from engine.clip_context import ClipContext
-from engine.episodes import Episode
+from engine.episodes import (Episode, MIN_FLICK_DETECTION_DENSITY,
+                             detection_density)
 from engine.metrics.correction import DEADBAND_HU, MIN_FLICK_SPEED_HU_S
 
 NEAR_BAND_HU = 0.8            # граница баллистика↔settle (вход в band)
@@ -42,7 +43,8 @@ class FlickPhase:
 
 @dataclass(frozen=True)
 class FlickPhaseReport:
-    flicks_analysed: int         # прошли гейт флика (kind + скорость)
+    flicks_analysed: int         # прошли гейт флика (kind + скорость + плотность)
+    flicks_sparse: int           # отсеяны гейтом плотности (посчитаны, не судимы)
     flicks_arrived: int          # вошли в near-band
     flicks_settled: int          # = usable (участвуют в медианах)
     flicks_jitter_n: int         # settled-флики, реально давшие jitter (не None)
@@ -146,10 +148,15 @@ def compute_flick_phases(episodes: Sequence[Episode], ctx: ClipContext,
                          stable_frames: int = SETTLE_STABLE_FRAMES,
                          deadband_hu: float = DEADBAND_HU,
                          min_flick_speed_hu_s: float = MIN_FLICK_SPEED_HU_S,
+                         min_density: float = MIN_FLICK_DETECTION_DENSITY,
                          ) -> FlickPhaseReport:
     phases: List[FlickPhase] = []
+    sparse = 0
     for i, ep in enumerate(episodes, start=1):
         if ep.kind != "flick" or ep.peak_closing_speed_hu_s < min_flick_speed_hu_s:
+            continue
+        if detection_density(ep) < min_density:
+            sparse += 1            # посчитан, но исключён из вердиктов/медиан
             continue
         phases.append(_usable_phase(ep, i, near_band_hu, settle_tol_hu,
                                     stable_frames, deadband_hu))
@@ -177,6 +184,7 @@ def compute_flick_phases(episodes: Sequence[Episode], ctx: ClipContext,
 
     return FlickPhaseReport(
         flicks_analysed=len(phases),
+        flicks_sparse=sparse,
         flicks_arrived=sum(1 for p in phases if p.arrived),
         flicks_settled=len(usable),
         flicks_jitter_n=len(jitter_vals),

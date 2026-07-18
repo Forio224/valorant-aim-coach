@@ -17,7 +17,8 @@ from typing import List, Optional, Sequence, Tuple
 
 from engine.geometry import FrameSample
 from engine.clip_context import ClipContext
-from engine.episodes import DEFAULT_DUEL_HU, Episode
+from engine.episodes import (DEFAULT_DUEL_HU, Episode,
+                             MIN_FLICK_DETECTION_DENSITY, detection_density)
 
 DEADBAND_HU = 0.3              # |offset| below this carries no sign information
 MIN_FLICK_SPEED_HU_S = 20.0    # slower approaches may be enemy/strafe motion
@@ -45,7 +46,8 @@ class CorrectionVerdict:
 @dataclass(frozen=True)
 class CorrectionReport:
     flicks_total: int           # episodes tagged flick
-    flicks_analysed: int        # subset where camera speed dominates
+    flicks_analysed: int        # subset where camera speed dominates + dense track
+    flicks_sparse: int          # отсеяны гейтом плотности детекций (Фаза 4)
     x_overshoots: int
     x_undershoots: int
     y_overshoots: int
@@ -119,13 +121,18 @@ def compute_correction(episodes: Sequence[Episode], ctx: ClipContext,
                        duel_hu: float = DEFAULT_DUEL_HU,
                        deadband_hu: float = DEADBAND_HU,
                        min_flick_speed_hu_s: float = MIN_FLICK_SPEED_HU_S,
+                       min_density: float = MIN_FLICK_DETECTION_DENSITY,
                        ) -> CorrectionReport:
     settle_frames = max(int(round(SETTLE_S * ctx.fps)), 1)
     flicks_total = sum(1 for ep in episodes if ep.kind == "flick")
 
     verdicts: List[CorrectionVerdict] = []
+    sparse = 0
     for i, ep in enumerate(episodes, start=1):
         if ep.kind != "flick" or ep.peak_closing_speed_hu_s < min_flick_speed_hu_s:
+            continue
+        if detection_density(ep) < min_density:
+            sparse += 1            # посчитан, но исключён из вердиктов/счётчиков
             continue
         window = _analysis_window(ep, duel_hu, settle_frames)
         frames = [s.frame_idx for s in window]
@@ -145,6 +152,7 @@ def compute_correction(episodes: Sequence[Episode], ctx: ClipContext,
     return CorrectionReport(
         flicks_total=flicks_total,
         flicks_analysed=len(verdicts),
+        flicks_sparse=sparse,
         x_overshoots=counts["x"]["overshoot"],
         x_undershoots=counts["x"]["undershoot"],
         y_overshoots=counts["y"]["overshoot"],
