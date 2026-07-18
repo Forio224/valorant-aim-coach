@@ -75,6 +75,17 @@ def test_resolved_then_not_reflagged_drops_out():
     assert compute_drill_progress([_finding("consistency", {"mae_hu": 3.9})], history) == []
 
 
+def test_resolution_on_unassigned_clip_reanchors():
+    # 2C-пиновка: резолюция засчитывается и на клипе БЕЗ назначенного дрилла
+    # (c2 не флагнут, но mae 4.0 < target 4.25) — серия рвётся по резолюции,
+    # не по присутствию дрилла; рефлаг на c3 открывает новую серию
+    history = [_mae_snap(1, "c1", 5.0), _mae_snap(2, "c2", 4.0, flagged=False),
+               _mae_snap(3, "c3", 6.0)]
+    rec = compute_drill_progress([_finding("consistency", {"mae_hu": 5.5})],
+                                 history)[0]
+    assert rec["anchor_clip_id"] == "c3" and rec["anchor_value"] == 6.0
+
+
 def test_resolution_requires_at_least_hypothesis():
     # c2 под target, но insufficient → НЕ резолюция, серия держит anchor c1
     history = [_mae_snap(1, "c1", 5.0), _mae_snap(2, "c2", 4.0, conf="insufficient"),

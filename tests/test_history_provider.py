@@ -55,6 +55,36 @@ def test_coach_failed_session_has_empty_assignments():
     assert snap["assignments"] == {} and "consistency" in snap["findings"]
 
 
+def test_mixed_timezone_offsets_sort_chronologically():
+    # 12:00+03:00 = 09:00 UTC — РАНЬШЕ, чем 10:00+00:00; строковая сортировка
+    # ISO-строк с разными оффсетами даёт обратный порядок (2C-фикс)
+    sessions = [
+        _session("late", "2026-07-01T10:00:00+00:00",
+                 [_f("consistency", {"mae_hu": 4.0})]),
+        _session("early", "2026-07-01T12:00:00+03:00",
+                 [_f("consistency", {"mae_hu": 5.0})]),
+    ]
+    snaps = build_clip_snapshots(sessions, "cur")
+    assert [s["clip_id"] for s in snaps] == ["early", "late"]
+    # clip_time канонизирован (UTC): движок сравнивает clip_time как строки —
+    # после канонизации лексикографический порядок = хронологический
+    assert snaps[0]["clip_time"] < snaps[1]["clip_time"]
+
+
+def test_dedup_with_mixed_offsets_keeps_chronologically_latest():
+    # свежая запись с "+03:00" на самом деле старше по UTC — дедуп обязан
+    # сравнивать время, а не строки
+    sessions = [
+        _session("c1", "2026-07-01T10:00:00+00:00",
+                 [_f("consistency", {"mae_hu": 4.0})]),
+        _session("c1", "2026-07-01T12:00:00+03:00",   # = 09:00 UTC, старше
+                 [_f("consistency", {"mae_hu": 5.0})]),
+    ]
+    snaps = build_clip_snapshots(sessions, "cur")
+    assert len(snaps) == 1
+    assert snaps[0]["findings"]["consistency"]["values"]["mae_hu"] == 4.0
+
+
 def test_session_without_evidence_report_skipped():
     sessions = [{"clip_id": "c1", "created_at": "2026-07-01T00:00:00",
                  "evidence_report": None, "coach_report": None}]

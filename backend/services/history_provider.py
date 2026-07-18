@@ -7,9 +7,21 @@
 и раскладывает в ClipSnapshot-и для engine.compute_drill_progress.
 """
 import json
+from datetime import datetime, timezone
 from typing import Callable, List, Optional, Sequence
 
 from engine.version import METRICS_VERSION
+
+
+def _utc(created_at: str) -> datetime:
+    """ISO-строка -> aware-datetime в UTC; naive считаем UTC (так пишет БД).
+
+    Сравнивать ISO-строки лексикографически нельзя: разные оффсеты
+    («12:00+03:00» = 09:00 UTC) дают обратный порядок (2C-фикс)."""
+    dt = datetime.fromisoformat(created_at)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 def build_clip_snapshots(sessions: Sequence[dict],
@@ -29,10 +41,10 @@ def build_clip_snapshots(sessions: Sequence[dict],
         if ev.get("metrics_version", 1) != METRICS_VERSION:
             continue                       # клип по прежней методике — не сравниваем
         prev = by_clip.get(s["clip_id"])
-        if prev is None or s["created_at"] > prev["created_at"]:
+        if prev is None or _utc(s["created_at"]) > _utc(prev["created_at"]):
             by_clip[s["clip_id"]] = s
     snapshots: List[dict] = []
-    for s in sorted(by_clip.values(), key=lambda x: x["created_at"]):
+    for s in sorted(by_clip.values(), key=lambda x: _utc(x["created_at"])):
         ev = s["evidence_report"]
         findings = {f["metric"]: {"values": f.get("values", {}),
                                   "confidence": f["confidence"]}
@@ -41,7 +53,10 @@ def build_clip_snapshots(sessions: Sequence[dict],
         assignments = {d["target_metric"]: d["drill_id"]
                        for d in coach.get("drills", [])
                        if d.get("target_metric") and d.get("drill_id")}
-        snapshots.append({"clip_time": s["created_at"], "clip_id": s["clip_id"],
+        # clip_time — канонический UTC-ISO: движок (drill_progress) сравнивает
+        # clip_time лексикографически, после канонизации это же хронология
+        snapshots.append({"clip_time": _utc(s["created_at"]).isoformat(),
+                          "clip_id": s["clip_id"],
                           "assignments": assignments, "findings": findings})
     return snapshots
 
