@@ -150,6 +150,17 @@ def test_upload_accepts_training_platform(api):
     assert calls[0]["training_platform"] == "ingame"
 
 
+def test_upload_rejects_unknown_training_platform(api):
+    # иначе ValueError из ClipContext перехватился бы пайплайном и превратился
+    # в ложное «файл повреждён» — валидируем на границе API (ревью Фазы 4)
+    client, db, main, calls = api
+    resp = _upload(client, data={"player_id": "friend",
+                                 "training_platform": "csgo"})
+    assert resp.status_code == 422
+    assert "training_platform" in resp.json()["detail"]
+    assert calls == []                        # пайплайн не запускался
+
+
 def test_on_status_writes_pipeline_status_to_db(api):
     client, db, main, calls = api
     _upload(client)

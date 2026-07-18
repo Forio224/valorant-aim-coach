@@ -106,6 +106,12 @@ async def upload_video(background_tasks: BackgroundTasks,
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(status_code=400, detail="Unsupported video format")
+    # Валидация на границе API: иначе ValueError из ClipContext перехватится
+    # пайплайном и отрапортуется игроку как ложное «файл повреждён».
+    if training_platform not in (None, "kovaaks", "ingame"):
+        raise HTTPException(
+            status_code=422,
+            detail="training_platform должен быть 'kovaaks' или 'ingame'")
     player_id = player_id.strip()
     if not player_id:
         raise HTTPException(status_code=400, detail="player_id is required")
