@@ -277,6 +277,50 @@ def test_cm_per_360_from_clip_block_passes():
     assert errors == []
 
 
+# ------------------------- Фаза 4: монотонность порядка дриллов по confidence
+
+def _coach_drills(drills: List[DrillSelection]) -> CoachReport:
+    return CoachReport(summary="Портрет игрока.", findings_explained=[],
+                       drills=drills, caveats=[])
+
+
+def _drill(priority: int, drill_id: str) -> DrillSelection:
+    return DrillSelection(priority=priority, drill_id=drill_id,
+                          rationale="работа над слабым местом")
+
+
+def test_drill_order_hypothesis_before_diagnosis_is_error():
+    # priority 1 -> дрилл по hypothesis-находке (placement), priority 2 ->
+    # по diagnosis (consistency) — класс уверенности растёт: ошибка
+    coach = _coach_drills([_drill(1, "placement_t1_range_preaim_walk"),
+                           _drill(2, "consistency_t1_vt_ww5t_novice")])
+    errors = validate_coach_report(coach, _evidence())
+    assert any("монотонность" in e for e in errors)
+
+
+def test_drill_order_insufficient_in_middle_is_error():
+    # diagnosis(1), insufficient(2), hypothesis(3) -> рост класса на шаге 2->3
+    ev = _evidence()
+    ev["findings"].append({
+        "metric": "bias", "statement": "нет дуэльных кадров", "values": {},
+        "confidence": "insufficient", "evidence": []})
+    coach = _coach_drills([_drill(1, "consistency_t1_vt_ww5t_novice"),
+                           _drill(2, "bias_t1_vt_1w4ts_novice"),
+                           _drill(3, "placement_t1_range_preaim_walk")])
+    errors = validate_coach_report(coach, ev)
+    assert any("монотонность" in e for e in errors)
+
+
+def test_drill_order_equal_classes_any_order_ok():
+    # два diagnosis в любом порядке -> ошибок монотонности нет
+    ev = _evidence()
+    ev["findings"][1]["confidence"] = "diagnosis"     # placement -> diagnosis
+    coach = _coach_drills([_drill(1, "placement_t1_range_preaim_walk"),
+                           _drill(2, "consistency_t1_vt_ww5t_novice")])
+    errors = validate_coach_report(coach, ev)
+    assert not any("монотонность" in e for e in errors)
+
+
 # ------------------------------------------------- ретрай и деградация
 
 class RetryStub:

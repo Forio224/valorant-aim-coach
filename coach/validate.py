@@ -79,6 +79,7 @@ _EVIDENCE_FRAME_KEYS = ("frame", "frame_start", "frame_end")
 _EPISODE_FRAME_KEYS = ("start_frame", "end_frame", "multi_from_frame")
 _EVIDENCE_HU_KEYS = ("dx_hu", "dy_hu", "head_height_px")
 _HEDGED_CONFIDENCES = ("hypothesis", "insufficient")
+_CONF_RANK = {"diagnosis": 2, "hypothesis": 1, "insufficient": 0}
 
 
 @dataclass(frozen=True)
@@ -252,6 +253,27 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
         errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
         errors.extend(_check_cm_numbers(drill.rationale, numbers_known, where))
         errors.extend(_check_causal(drill.rationale, where))
+
+    # Гейт монотонности (Фаза 4): порядок дриллов по priority не должен ставить
+    # менее уверенный класс раньше более уверенного. Жёсткий гейт — только на
+    # факте движка (confidence находки); внутри класса порядок выбирает VLM.
+    ranked = []
+    for drill in sorted(coach.drills, key=lambda d: d.priority):
+        cd = get_catalog_drill(drill.drill_id)
+        if cd is None:
+            continue                     # уже поймано выше
+        finding = findings_by_metric.get(cd.metric)
+        if finding is None:
+            continue                     # уже поймано выше
+        rank = _CONF_RANK.get(finding.get("confidence"))
+        if rank is not None:
+            ranked.append((drill.drill_id, rank))
+    for (prev_id, prev_rank), (cur_id, cur_rank) in zip(ranked, ranked[1:]):
+        if cur_rank > prev_rank:
+            errors.append(
+                f"нарушена монотонность уверенности: дрилл '{cur_id}' (класс "
+                f"выше) стоит после '{prev_id}' — сортируй diagnosis ≥ "
+                f"hypothesis ≥ insufficient")
 
     progress_by_metric = {r["metric"]: r for r in evidence.get("drill_progress", [])}
     for pe in coach.progress_explained:
