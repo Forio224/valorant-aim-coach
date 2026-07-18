@@ -92,11 +92,16 @@ GET /api/v1/analysis/{session_id}
 - `coach/schema.py` — Pydantic `CoachReport` (summary, findings_explained,
   drills, caveats)
 - `coach/prompt.py` — groundedness-правила: числа только из JSON
-- `coach/client.py` — Anthropic structured output; модель `COACH_MODEL`
-  (default claude-sonnet-5), кап картинок
+- `coach/providers/` — мульти-провайдерный адаптер: `factory.create_coach_client`
+  по `COACH_PROVIDER` (default **gemini**); `gemini.py` (google-genai
+  Interactions API, default gemini-3.5-flash, ключ `GEMINI_API_KEY`),
+  `anthropic.py` (default claude-sonnet-5, ключ `ANTHROPIC_API_KEY`),
+  `common.py` (ресайз кадров, кап картинок); `coach/client.py` — реэкспорт
+  для обратной совместимости
 - `coach/validate.py` — механическая анти-выдумка: кадры/HU-числа/
   metric-ссылки/confidence-язык; `run_coach_validated` = 1 ретрай → coach_failed
-- `coach_cli.py` — офлайн-прогон коуча на готовом evidence-JSON
+- `coach_cli.py` — офлайн-прогон коуча на готовом evidence-JSON;
+  `--provider gemini|anthropic` + `--model` для сравнения моделей
 
 ### CLI движка (офлайн-анализ)
 

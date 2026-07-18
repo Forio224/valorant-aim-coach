@@ -4,6 +4,7 @@ python-multipart
 opencv-python-headless
 numpy
 anthropic
+google-genai
 sqlmodel
 pydantic
 python-dotenv

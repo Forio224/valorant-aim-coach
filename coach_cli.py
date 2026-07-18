@@ -6,8 +6,9 @@
         --frames reports/evidence/friend_clip3 \
         --out coach_friend_clip3.json
 
-ANTHROPIC_API_KEY берётся из окружения / .env; модель — COACH_MODEL
-(по умолчанию claude-sonnet-5).
+Провайдер LLM — флаг --provider (gemini | anthropic) или env COACH_PROVIDER
+(по умолчанию gemini); ключ под провайдера — GEMINI_API_KEY / ANTHROPIC_API_KEY
+из окружения / .env; модель — --model или COACH_MODEL.
 """
 import argparse
 import json
@@ -30,7 +31,10 @@ def main(argv: Optional[Sequence[str]] = None, client=None) -> int:
         "--frames", default=None, help="каталог с аннотированными кадрами-уликами"
     )
     parser.add_argument("--out", required=True, help="куда записать CoachReport JSON")
-    parser.add_argument("--model", default=None, help="переопределить модель Claude")
+    parser.add_argument("--model", default=None, help="переопределить модель LLM")
+    parser.add_argument(
+        "--provider", default=None,
+        help="провайдер LLM: gemini | anthropic (по умолчанию из COACH_PROVIDER)")
     args = parser.parse_args(argv)
 
     report = json.loads(Path(args.report).read_text(encoding="utf-8"))
@@ -43,9 +47,9 @@ def main(argv: Optional[Sequence[str]] = None, client=None) -> int:
             load_dotenv()
         except ImportError:
             pass
-        from coach.client import CoachClient
+        from coach.providers.factory import create_coach_client
 
-        client = CoachClient(model=args.model)
+        client = create_coach_client(provider=args.provider, model=args.model)
 
     from coach.validate import run_coach_validated
 

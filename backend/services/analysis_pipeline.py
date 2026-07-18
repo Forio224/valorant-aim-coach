@@ -119,8 +119,8 @@ def _run_coach(coach_client, report: dict, frame_paths: Sequence,
     try:
         client = coach_client
         if client is None:
-            from coach.client import CoachClient
-            client = CoachClient()
+            from coach.providers.factory import create_coach_client
+            client = create_coach_client()
         result = run_coach_validated(
             client, report, list(frame_paths)[: config.coach_max_images])
     except Exception as exc:                      # noqa: BLE001 — деградация
