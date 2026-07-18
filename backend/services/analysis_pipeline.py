@@ -159,7 +159,8 @@ def run_pipeline(video_path: str, player_id: str, *,
                  evidence_dir: str,
                  on_status: Optional[StatusCallback] = None,
                  detector: Optional[Detector] = None,
-                 coach_client=None) -> PipelineResult:
+                 coach_client=None,
+                 history_provider: Optional[Callable] = None) -> PipelineResult:
     """Полный продуктовый прогон одного клипа одного игрока."""
     cfg = config or PipelineConfig.from_env()
     notify = on_status or (lambda status: None)
@@ -187,8 +188,11 @@ def run_pipeline(video_path: str, player_id: str, *,
     save_clip(cfg.profile_dir, ctx, record)
     profile = aggregate_profile(load_player(cfg.profile_dir, ctx.player_id))
 
+    provider = history_provider or (lambda pid, cid: [])
+    drill_history = provider(player_id, ctx.clip_id)
+
     report = build_report(ctx, samples, episodes, duel_hu=cfg.duel_hu,
-                          profile=profile)
+                          profile=profile, drill_history=drill_history)
     frame_paths = render_evidence_frames(str(video_path), report,
                                          evidence_dir, cap=cfg.evidence_cap)
 

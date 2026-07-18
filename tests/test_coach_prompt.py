@@ -58,3 +58,10 @@ def test_user_text_includes_catalog_menu():
 
 def test_system_prompt_forbids_inventing_drills():
     assert "drill_id" in SYSTEM_PROMPT
+
+
+def test_system_prompt_has_progress_rule():
+    assert "drill_progress" in SYSTEM_PROMPT
+    assert "progress_explained" in SYSTEM_PROMPT
+    # запрет каузальности проговорён
+    assert "сработал" in SYSTEM_PROMPT or "каузальн" in SYSTEM_PROMPT.lower()

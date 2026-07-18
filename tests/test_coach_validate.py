@@ -302,3 +302,194 @@ def test_double_failure_degrades_to_coach_failed(caplog):
     assert result.attempts == 2
     assert any("999" in e for e in result.errors)
     assert any("999" in r.message for r in caplog.records)  # ошибку не глотаем
+
+
+# --------------------------------------------- progress_explained (Фаза 2B)
+
+def _evidence_with_progress(direction="improved", confidence="hypothesis"):
+    return {
+        "episodes": [], "findings": [
+            {"metric": "consistency", "values": {"mae_hu": 4.8},
+             "confidence": "diagnosis", "statement": "", "evidence": []}],
+        "drill_progress": [{
+            "metric": "consistency", "drill_id": "consistency_t1_vt_ww5t_novice",
+            "value_key": "mae_hu", "comparator": "<", "anchor_value": 5.0,
+            "anchor_clip_id": "c1", "current_value": 4.8, "delta": -0.2,
+            "direction": direction, "confidence": confidence, "series_len": 2,
+            "resolved_now": False, "order_uncertain": True}],
+    }
+
+
+def _coach_with_progress(direction="improved", confidence="hypothesis",
+                         explanation="точность движется в нужную сторону"):
+    from coach.schema import CoachReport, ProgressExplained
+    return CoachReport(
+        summary="Портрет без чисел.", findings_explained=[], drills=[], caveats=[],
+        progress_explained=[ProgressExplained(
+            metric="consistency", direction=direction, confidence=confidence,
+            explanation=explanation)])
+
+
+def test_valid_progress_passes():
+    from coach.validate import validate_coach_report
+    assert validate_coach_report(_coach_with_progress(),
+                                 _evidence_with_progress()) == []
+
+
+def test_grounded_delta_number_passes():
+    from coach.validate import validate_coach_report
+    coach = _coach_with_progress(explanation="ошибка снизилась на 0.2 HU")
+    assert validate_coach_report(coach, _evidence_with_progress()) == []
+
+
+def test_invented_delta_number_rejected():
+    from coach.validate import validate_coach_report
+    coach = _coach_with_progress(explanation="ошибка снизилась на 9.9 HU")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("9.9" in e for e in errors)
+
+
+def test_direction_mismatch_rejected():
+    from coach.validate import validate_coach_report
+    # движок сказал improved, коуч заявил regressed
+    coach = _coach_with_progress(direction="regressed")
+    errors = validate_coach_report(coach, _evidence_with_progress("improved"))
+    assert any("направлени" in e for e in errors)
+
+
+def test_progress_confidence_matched_against_drill_progress():
+    from coach.validate import validate_coach_report
+    # drill_progress.confidence = hypothesis, коуч заявил diagnosis
+    coach = _coach_with_progress(confidence="diagnosis")
+    errors = validate_coach_report(coach, _evidence_with_progress(confidence="hypothesis"))
+    assert any("confidence" in e for e in errors)
+
+
+def test_progress_metric_absent_from_drill_progress_rejected():
+    from coach.validate import validate_coach_report
+    ev = _evidence_with_progress()
+    ev["drill_progress"] = []                 # движок ничего не репортил
+    errors = validate_coach_report(_coach_with_progress(), ev)
+    assert any("drill_progress" in e for e in errors)
+
+
+def test_causal_attribution_rejected_in_progress():
+    from coach.validate import validate_coach_report
+    coach = _coach_with_progress(explanation="точность выросла благодаря дриллу")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() or "благодаря" in e for e in errors)
+
+
+def test_causal_attribution_rejected_in_summary():
+    from coach.schema import CoachReport
+    from coach.validate import validate_coach_report
+    coach = CoachReport(summary="дрилл сработал и всё стало лучше",
+                        findings_explained=[], drills=[], caveats=[])
+    errors = validate_coach_report(coach, {"episodes": [], "findings": []})
+    assert any("каузальн" in e.lower() or "сработал" in e for e in errors)
+
+
+def test_causal_attribution_rejected_in_caveats():
+    from coach.schema import CoachReport
+    from coach.validate import validate_coach_report
+    coach = CoachReport(summary="ок", findings_explained=[], drills=[],
+                        caveats=["прогресс есть благодаря тренировке"])
+    errors = validate_coach_report(coach, {"episodes": [], "findings": []})
+    assert errors, "каузальность в caveats должна ловиться"
+
+
+def test_causal_attribution_rejected_in_findings_explained():
+    errors = validate_coach_report(
+        _coach(explanation="снижение ошибки — результат тренировки"), _evidence()
+    )
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_causal_attribution_rejected_in_drill_rationale():
+    errors = validate_coach_report(
+        _coach(rationale="прогресс объясняется дриллом"), _evidence()
+    )
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+# --------------------------- broadened causal regex: evasion phrases (fix)
+
+def test_causal_phrase_privela_k_caught():
+    coach = _coach_with_progress(explanation="тренировка привела к снижению ошибки")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_causal_phrase_vyzvano_praktikoy_caught():
+    coach = _coach_with_progress(explanation="изменение вызвано практикой")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_causal_phrase_sledstvie_drilla_caught():
+    coach = _coach_with_progress(explanation="это следствие дрилла")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+# ------------------------------- broadened causal regex: no over-block (fix)
+
+def test_valid_progress_explanation_not_over_blocked():
+    # «точность движется в нужную сторону» описывает изменение без
+    # атрибуции причины — расширенный regex не должен его ловить
+    coach = _coach_with_progress(explanation="точность движется в нужную сторону")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert errors == []
+
+
+def test_hedged_progress_forbids_assertive_word():
+    from coach.validate import validate_coach_report
+    coach = _coach_with_progress(confidence="hypothesis",
+                                 explanation="точность однозначно движется вниз")
+    errors = validate_coach_report(coach, _evidence_with_progress(confidence="hypothesis"))
+    assert any("однозначно" in e for e in errors)
+
+
+# ------------------- broadened causal verbs: drill-object co-occurrence fix
+
+def test_progress_explanation_objasnyaetsya_drillom_caught():
+    # «объясняется» + объект «дриллом» в одном тексте — блокируется
+    coach = _coach_with_progress(explanation="прогресс объясняется дриллом")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_progress_explanation_rezultat_trenirovki_caught():
+    # обобщённый объект-якорный паттерн «результат тренировки» — блокируется
+    coach = _coach_with_progress(
+        explanation="снижение ошибки — результат тренировки")
+    errors = validate_coach_report(coach, _evidence_with_progress())
+    assert any("каузальн" in e.lower() for e in errors)
+
+
+def test_findings_explained_mechanical_objasnyaetsya_not_blocked():
+    # «объясняется» без объекта-дрилла — механическое объяснение, не каузальная
+    # атрибуция дриллу; должно пройти чисто (никаких HU-чисел/кадров-фикций)
+    errors = validate_coach_report(
+        _coach(explanation="промах объясняется тем, что прицел уводит ниже "
+                            "головы", frames=[]),
+        _evidence(),
+    )
+    assert not any("каузальн" in e.lower() for e in errors)
+
+
+def test_summary_privel_k_mechanical_not_blocked():
+    # «привёл» без объекта-дрилла — не каузальная атрибуция тренировке
+    coach = _coach().model_copy(
+        update={"summary": "недострел привёл к потере дуэлей"})
+    errors = validate_coach_report(coach, _evidence())
+    assert not any("каузальн" in e.lower() for e in errors)
+
+
+def test_drill_rationale_describes_purpose_not_blocked():
+    # rationale описывает назначение дрилла без каузального глагола изменения
+    errors = validate_coach_report(
+        _coach(rationale="этот дрилл ставит стабильную микрокоррекцию"),
+        _evidence(),
+    )
+    assert not any("каузальн" in e.lower() for e in errors)

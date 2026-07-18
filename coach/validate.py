@@ -31,6 +31,49 @@ _ASSERTIVE_STOPWORDS_RE = re.compile(
     re.IGNORECASE,
 )
 
+# каузальная атрибуция изменения дриллу — запрещена (адхеренс/конфаундеры
+# неизвестны). Предпочитаем over-block: ложный блок ловится ретраем.
+# Триггеры ниже — объект-специфичные (буквально называют дрилл/тренировку):
+# «сработал», «благодаря», «помог», «из-за дрилла/тренировки/упражнения»,
+# «эффект дрилла», «дал результат», обобщённый паттерн
+# «результат <дрилла/тренировки/упражнения/практики>».
+_CAUSAL_STOPWORDS_RE = re.compile(
+    r"(сработал\w*|\bблагодаря|помог\w*|из-за\s+(?:дрилл|тренировк|упражнени)\w*|"
+    r"эффект\s+дрилл\w*|дал\s+результат|"
+    r"результат\w*\s+(?:дрилл|тренировк|упражнени|практик)\w*)",
+    re.IGNORECASE,
+)
+
+# Широкие каузальные глаголы («объясняется», «вызвано», «следствие»,
+# «привёл/привела/привело») сами по себе НЕ несут объекта-дрилла — они
+# используются и в чисто механических объяснениях («промах объясняется
+# тем, что прицел уводит ниже головы»). Блокируем их только когда в том же
+# тексте ТАКЖЕ встречается объект обучения (дрилл/тренировка/упражнение/
+# практика), независимо от порядка — иначе получаем over-block механики.
+_BROAD_CAUSAL_VERB_RE = re.compile(
+    r"(объясня\w*|вызван\w*|вызвано|следстви\w*|"
+    r"привёл\w*|привел\w*|привела\w*|привело\w*)",
+    re.IGNORECASE,
+)
+_DRILL_OBJECT_RE = re.compile(
+    r"(дрилл\w*|тренировк\w*|упражнени\w*|практик\w*)", re.IGNORECASE
+)
+
+
+def _check_causal(text: str, where: str) -> List[str]:
+    text = text or ""
+    match = _CAUSAL_STOPWORDS_RE.search(text)
+    if match is None:
+        broad_match = _BROAD_CAUSAL_VERB_RE.search(text)
+        if broad_match is not None and _DRILL_OBJECT_RE.search(text):
+            match = broad_match
+    if match:
+        return [f"каузальная атрибуция '{match.group(0)}' ({where}) — запрещено "
+                f"утверждать, что дрилл вызвал изменение (адхеренс/конфаундеры "
+                f"неизвестны)"]
+    return []
+
+
 _EVIDENCE_FRAME_KEYS = ("frame", "frame_start", "frame_end")
 _EPISODE_FRAME_KEYS = ("start_frame", "end_frame", "multi_from_frame")
 _EVIDENCE_HU_KEYS = ("dx_hu", "dy_hu", "head_height_px")
@@ -98,6 +141,9 @@ def _known_numbers(evidence: dict) -> List[float]:
             pool.append(float(episode["peak_closing_speed_hu_s"]))
     profile = evidence.get("profile") or {}
     pool.extend(float(v) for v in profile.values() if _is_number(v))
+    for rec in evidence.get("drill_progress", []):
+        pool.extend(float(rec[k]) for k in ("anchor_value", "current_value", "delta")
+                    if _is_number(rec.get(k)))
     return pool
 
 
@@ -143,6 +189,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                     f"кадр {frame} ({where}) не существует в evidence-JSON"
                 )
         errors.extend(_check_hu_numbers(fe.explanation, numbers_known, where))
+        errors.extend(_check_causal(fe.explanation, where))
         if fe.confidence in _HEDGED_CONFIDENCES:
             stopword = _ASSERTIVE_STOPWORDS_RE.search(fe.explanation)
             if stopword:
@@ -152,6 +199,9 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                 )
 
     errors.extend(_check_hu_numbers(coach.summary, numbers_known, "summary"))
+    errors.extend(_check_causal(coach.summary, "summary"))
+    for caveat in coach.caveats:
+        errors.extend(_check_causal(caveat, "caveats"))
 
     menu_ids = menu_drill_ids()
     for drill in coach.drills:
@@ -169,6 +219,29 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                 f"первый клип — только tier-1 дриллы"
             )
         errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
+        errors.extend(_check_causal(drill.rationale, where))
+
+    progress_by_metric = {r["metric"]: r for r in evidence.get("drill_progress", [])}
+    for pe in coach.progress_explained:
+        where = f"progress '{pe.metric}'"
+        rec = progress_by_metric.get(pe.metric)
+        if rec is None:
+            errors.append(f"{where} отсутствует в drill_progress движка")
+            continue
+        if pe.direction != rec["direction"]:
+            errors.append(f"{where}: коуч заявил направление '{pe.direction}', "
+                          f"у движка '{rec['direction']}'")
+        if pe.confidence != rec["confidence"]:
+            errors.append(f"{where}: коуч заявил confidence '{pe.confidence}', "
+                          f"у движка '{rec['confidence']}'")
+        errors.extend(_check_hu_numbers(pe.explanation, numbers_known, where))
+        errors.extend(_check_causal(pe.explanation, where))
+        if pe.confidence in _HEDGED_CONFIDENCES:
+            stopword = _ASSERTIVE_STOPWORDS_RE.search(pe.explanation)
+            if stopword:
+                errors.append(
+                    f"утвердительное слово '{stopword.group(1)}' в гипотезе "
+                    f"({where}) — гипотеза не должна звучать как диагноз")
     return errors
 
 
