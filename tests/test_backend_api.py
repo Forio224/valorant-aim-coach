@@ -161,6 +161,21 @@ def test_upload_rejects_unknown_training_platform(api):
     assert calls == []                        # пайплайн не запускался
 
 
+def test_list_sessions_for_player_orders_by_created_at(tmp_path):
+    # 2C: порядок должен давать SQL, а не совпадение с порядком вставки —
+    # иначе история прогресса зависит от прихотей БД
+    from datetime import datetime, timezone
+    db = DatabaseManager(f"sqlite:///{tmp_path / 'order.db'}")
+    s_a = db.create_session("v1.mp4", player_id="p", clip_id="a")
+    s_b = db.create_session("v2.mp4", player_id="p", clip_id="b")
+    s_c = db.create_session("v3.mp4", player_id="p", clip_id="c")
+    db.update_session(s_a.id, created_at=datetime(2026, 7, 3, tzinfo=timezone.utc))
+    db.update_session(s_b.id, created_at=datetime(2026, 7, 1, tzinfo=timezone.utc))
+    db.update_session(s_c.id, created_at=datetime(2026, 7, 2, tzinfo=timezone.utc))
+    rows = db.list_sessions_for_player("p")
+    assert [r.clip_id for r in rows] == ["b", "c", "a"]
+
+
 def test_on_status_writes_pipeline_status_to_db(api):
     client, db, main, calls = api
     _upload(client)

@@ -72,7 +72,10 @@ class DatabaseManager:
             return session.get(AnalysisSession, session_id)
 
     def list_sessions_for_player(self, player_id: str):
+        # Порядок отдаёт SQL (2C): история прогресса не должна зависеть от
+        # порядка вставки/прихотей планировщика БД.
         with Session(self.engine) as session:
             return list(session.exec(
-                select(AnalysisSession).where(
-                    AnalysisSession.player_id == player_id)).all())
+                select(AnalysisSession)
+                .where(AnalysisSession.player_id == player_id)
+                .order_by(AnalysisSession.created_at)).all())
