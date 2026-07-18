@@ -139,6 +139,46 @@ def test_correction_values_have_cm_equiv_median_or_none():
     report_to_json(without)                    # сериализация не падает
 
 
+# ── Фаза 4: severity_ratio — отклонение находки от СВОЕГО порога ─────────────
+
+
+def _finding(report, metric):
+    return next(f for f in report["findings"] if f["metric"] == metric)
+
+
+def test_severity_ratio_consistency_uses_diagnosis_value():
+    # диагноз repeatability (std>1, mae>1): ratio обязан прийти от std,
+    # не от mae — иначе два факта смотрят в разные стороны
+    from aim_metrics import FrameSample
+    samples = [FrameSample(frame_idx=i, dx_hu=v, dy_hu=0.0, radial_hu=v,
+                           head_height_px=63.0)
+               for i, v in enumerate([0.2, 2.8] * 20)]
+    report = build_report(make_ctx(), samples, [])
+    cons = _finding(report, "consistency")
+    assert cons["values"]["diagnosis"] == "repeatability"
+    assert cons["severity_ratio"] == pytest.approx(
+        cons["values"]["std_hu"] / 1.0, abs=0.002)
+    assert cons["severity_ratio"] != pytest.approx(
+        cons["values"]["mae_hu"] / 1.0, abs=0.002)
+
+
+def test_severity_ratio_none_on_empty_clip_and_serializes():
+    report = build_report(make_ctx(), [], [])
+    for f in report["findings"]:
+        assert f["severity_ratio"] is None
+    report_to_json(report)                     # allow_nan=False не падает
+
+
+def test_severity_ratio_present_on_hypothesis():
+    # величина существует при малом n -> ratio публикуется, интерпретацию
+    # ограничивает confidence-лейбл
+    ctx, samples, episodes = overshoot_clip()
+    report = build_report(ctx, samples, episodes)
+    placement = _finding(report, "placement")
+    assert placement["confidence"] == "hypothesis"
+    assert placement["severity_ratio"] is not None
+
+
 # ── Serialisation ────────────────────────────────────────────────────────────
 
 

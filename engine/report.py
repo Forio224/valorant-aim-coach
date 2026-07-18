@@ -20,7 +20,10 @@ from engine.clip_context import ClipContext
 from engine.episodes import Episode
 from engine.input_space import cm_per_360, cm_unavailable_reason, hu_to_cm_equiv
 from engine.version import METRICS_VERSION
-from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
+from engine.metrics.consistency import (DEFAULT_ERROR_HIGH_HU,
+                                        DEFAULT_SPREAD_HIGH_HU,
+                                        _DIAGNOSIS_TEXT, compute_consistency)
+from engine.metrics.criterion import PLACEMENT_TARGET_FRACTION
 from engine.metrics.correction import _AXIS_LABELS, compute_correction
 from engine.metrics.drill_progress import compute_drill_progress
 from engine.metrics.flick_phase import compute_flick_phases
@@ -33,6 +36,12 @@ from engine.profile_store import (
 
 SCHEMA_VERSION = "1.3"
 MIN_FLICKS_FOR_DIAGNOSIS = 6
+
+# severity_ratio (Фаза 4): отклонение находки от ЕЁ СОБСТВЕННОГО порога —
+# факт внутри метрики. Кросс-метрического ранга НЕТ: обменного курса между
+# метриками взять неоткуда, порядок между ними — суждение VLM под гейтом.
+BIAS_HIGH_HU = 0.5            # некалибр.: полголовы систематического смещения
+CORRECTION_HIGH_SHARE = 0.5   # некалибр.: худшая ось портит > половины фликов
 
 _VERTICAL_NOTES = {"below": "прицел ниже линии головы",
                    "above": "прицел выше линии головы",
@@ -122,6 +131,8 @@ def _placement_finding(episodes: Sequence[Episode], ctx: ClipContext) -> dict:
                      f"{_VERTICAL_NOTES[v.vertical]} (dy {v.dy_hu:+.2f} HU)"),
             **_geom(birth),
         })
+    severity = (None if rep.total_gated == 0
+                else (rep.n_below / rep.total_gated) / PLACEMENT_TARGET_FRACTION)
     return {
         "metric": "placement",
         "statement": (f"Пре-айм: {rep.n_below} из {rep.total_gated} появлений"
@@ -137,6 +148,7 @@ def _placement_finding(episodes: Sequence[Episode], ctx: ClipContext) -> dict:
                    "band_hu": rep.band_hu, "mean_dy_hu": _r(rep.mean_dy_hu),
                    "median_dy_hu": _r(rep.median_dy_hu),
                    "total_seen": rep.total_seen, "total_gated": rep.total_gated},
+        "severity_ratio": _r(severity),
         "confidence": _confidence(rep.total_gated,
                                   MIN_EPISODES_FOR_DIAGNOSIS),
         "evidence": evidence,
@@ -157,10 +169,24 @@ def _consistency_finding(samples: Sequence[FrameSample], duel_evidence: List[dic
         values["switches"] = attribution.switches
         values["contested_frames"] = attribution.contested_frames
         values["camera_confidence"] = attribution.camera_confidence
+    if rep.duel_frames == 0:
+        severity = None            # нет числителя: mae/std = NaN
+    else:
+        std_ratio = rep.std_hu / DEFAULT_SPREAD_HIGH_HU
+        mae_ratio = rep.duel_mae_hu / DEFAULT_ERROR_HIGH_HU
+        # ratio от ДИАГНОЗНОЙ величины (зеркалит порядок _classify) — иначе при
+        # std 1.1/mae 3.0 диагноз скажет «повторяемость», а severity от калибровки
+        if rep.diagnosis == "repeatability":
+            severity = std_ratio
+        elif rep.diagnosis == "calibration":
+            severity = mae_ratio
+        else:                      # stable_accurate / insufficient: запас/общий
+            severity = max(std_ratio, mae_ratio)
     return {
         "metric": "consistency",
         "statement": _DIAGNOSIS_TEXT[rep.diagnosis],
         "values": values,
+        "severity_ratio": _r(severity),
         "confidence": _confidence(rep.duel_frames,
                                   MIN_DUEL_FRAMES_FOR_DIAGNOSIS),
         "evidence": duel_evidence,
@@ -174,12 +200,15 @@ def _bias_finding(samples: Sequence[FrameSample], duel_evidence: List[dict],
     statement = ("Биасы в дуэли: "
                  + (f"Y {y:+.3f} HU (минус = прицел ниже голов), X {x:+.3f} HU"
                     if y is not None else "нет дуэльных кадров"))
+    severity = (None if p.y_bias_hu is None or math.isnan(p.y_bias_hu)
+                else abs(p.y_bias_hu) / BIAS_HIGH_HU)
     return {
         "metric": "bias",
         "statement": statement,
         "values": {"y_bias_hu": y, "x_bias_hu": x,
                    "x_abs_hu": _r(p.x_abs_hu), "y_abs_hu": _r(p.y_abs_hu),
                    "duel_frames": p.duel_frames},
+        "severity_ratio": _r(severity),
         "confidence": _confidence(p.duel_frames, MIN_DUEL_FRAMES_FOR_DIAGNOSIS),
         "evidence": duel_evidence,
     }
@@ -238,6 +267,10 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
         cm_vals.append(hu_to_cm_equiv(p.flick_overshoot_hu, hh, ctx))
     cm_known = [v for v in cm_vals if v is not None]
     cm_median = _r(median(cm_known), 2) if cm_known else None
+    worst = max(rep.x_overshoots, rep.x_undershoots,
+                rep.y_overshoots, rep.y_undershoots)
+    severity = (None if rep.flicks_analysed == 0
+                else (worst / rep.flicks_analysed) / CORRECTION_HIGH_SHARE)
     return {
         "metric": "correction",
         "statement": (f"Коррекция на фликах ({rep.flicks_analysed}): X перелёт"
@@ -261,6 +294,7 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                    "flicks_settled": ph.flicks_settled,
                    "flicks_jitter_n": ph.flicks_jitter_n,
                    "phase_confidence": ph.phase_confidence},
+        "severity_ratio": _r(severity),
         "confidence": _confidence(rep.flicks_analysed, MIN_FLICKS_FOR_DIAGNOSIS),
         "caveat": ("смена знака может быть стрейфом врага — прокси-метрика по"
                    " output-space, не механика мыши"
