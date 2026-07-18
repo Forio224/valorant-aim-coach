@@ -45,6 +45,7 @@ class FlickPhaseReport:
     flicks_analysed: int         # прошли гейт флика (kind + скорость)
     flicks_arrived: int          # вошли в near-band
     flicks_settled: int          # = usable (участвуют в медианах)
+    flicks_jitter_n: int         # settled-флики, реально давшие jitter (не None)
     flick_overshoot_hu_median: Optional[float]
     settle_time_frames_median: Optional[float]
     settle_jitter_hu_median: Optional[float]
@@ -58,20 +59,24 @@ def _ballistic_entry(radials: Sequence[float], near_band_hu: float) -> Optional[
     return next((i for i, r in enumerate(radials) if r <= near_band_hu), None)
 
 
-def _settle_index(radials: Sequence[float], b: int, tol: float,
-                  k: int) -> Optional[int]:
-    """Первый индекс устойчивого прогона: >= k подряд radial <= tol.
+def _settle_index(frames: Sequence[int], radials: Sequence[float], b: int,
+                  tol: float, k: int) -> Optional[int]:
+    """Первый индекс устойчивого прогона в КАДРОВОМ пространстве.
 
-    Возвращает индекс ПЕРВОГО кадра прогона (момент «успокоился»), иначе None.
+    Прогон продолжается только по кадрово-смежным сэмплам (frame ровно +1);
+    разрыв кадра начинает прогон заново (Фаза 4: на дырявом YOLO-треке «3 подряд
+    сэмпла» иначе растягиваются на 15 кадров — ложное «оселся»). Квалификация —
+    прогон покрывает >= k подряд идущих кадров.
     """
-    run = 0
+    run_start: Optional[int] = None
     for j in range(b, len(radials)):
-        if radials[j] <= tol:
-            run += 1
-            if run >= k:
-                return j - k + 1
-        else:
-            run = 0
+        if radials[j] > tol:
+            run_start = None
+            continue
+        if run_start is None or frames[j] != frames[j - 1] + 1:
+            run_start = j                      # разрыв кадра = новый прогон
+        if frames[j] - frames[run_start] + 1 >= k:
+            return run_start
     return None
 
 
@@ -101,7 +106,7 @@ def _usable_phase(ep: Episode, index: int, near_band_hu: float, settle_tol_hu: f
     if b is None:
         return FlickPhase(index, ep.start_frame, False, False,
                           None, None, None, None, None)
-    s = _settle_index(radials, b, settle_tol_hu, stable_frames)
+    s = _settle_index(frames, radials, b, settle_tol_hu, stable_frames)
     if s is None:
         return FlickPhase(index, ep.start_frame, True, False,
                           None, None, None, None, None)
@@ -115,16 +120,21 @@ def _usable_phase(ep: Episode, index: int, near_band_hu: float, settle_tol_hu: f
     overshoot, ev_local = (over_y, iy) if over_y > over_x else (over_x, ix)
     ev_frame = frames[ev_local] if ev_local is not None else None
 
+    seg_frames = frames[b:s + 1]
     seg = radials[b:s + 1]
-    deltas = [seg[j] - seg[j - 1] for j in range(1, len(seg))]
-    jitter = pstdev(deltas) if len(deltas) >= 1 else 0.0
-    path = sum(abs(d) for d in deltas)
+    # jitter — только кадрово-смежные дельты: дельта через дырку = склейка двух
+    # движений, завышала pstdev на ровном месте. < 2 смежных пар -> None.
+    adjacent = [seg[j] - seg[j - 1] for j in range(1, len(seg))
+                if seg_frames[j] == seg_frames[j - 1] + 1]
+    jitter = round(pstdev(adjacent), 3) if len(adjacent) >= 2 else None
+    # путь остаётся суммой |Δ| по всем сэмплам — при дырках это нижняя оценка
+    path = sum(abs(seg[j] - seg[j - 1]) for j in range(1, len(seg)))
     return FlickPhase(
         episode_index=index, start_frame=ep.start_frame,
         arrived=True, settled=True,
         flick_overshoot_hu=round(overshoot, 3),
         settle_time_frames=frames[s] - frames[b],
-        settle_jitter_hu=round(jitter, 3),
+        settle_jitter_hu=jitter,
         correction_path_hu=round(path, 3),
         overshoot_evidence_frame=ev_frame,
     )
@@ -147,8 +157,16 @@ def compute_flick_phases(episodes: Sequence[Episode], ctx: ClipContext,
     usable = [p for p in phases if p.settled]
 
     def _med(attr: str) -> Optional[float]:
-        vals = [getattr(p, attr) for p in usable]
+        vals = [getattr(p, attr) for p in usable
+                if getattr(p, attr) is not None]
         return round(median(vals), 3) if vals else None
+
+    jitter_vals = [p.settle_jitter_hu for p in usable
+                   if p.settle_jitter_hu is not None]
+    # медиана рывковости молчит, пока фликов с честным jitter меньше порога —
+    # иначе confidence по settled дал бы утвердительный язык про 1 флик
+    jitter_median = (round(median(jitter_vals), 3)
+                     if len(jitter_vals) >= MIN_FLICKS_FOR_PHASE else None)
 
     if not usable:
         conf = "insufficient"
@@ -161,11 +179,12 @@ def compute_flick_phases(episodes: Sequence[Episode], ctx: ClipContext,
         flicks_analysed=len(phases),
         flicks_arrived=sum(1 for p in phases if p.arrived),
         flicks_settled=len(usable),
+        flicks_jitter_n=len(jitter_vals),
         flick_overshoot_hu_median=_med("flick_overshoot_hu"),
         settle_time_frames_median=(round(median([p.settle_time_frames
                                                   for p in usable]), 3)
                                    if usable else None),
-        settle_jitter_hu_median=_med("settle_jitter_hu"),
+        settle_jitter_hu_median=jitter_median,
         correction_path_hu_median=_med("correction_path_hu"),
         phase_confidence=conf,
         phases=tuple(phases),
@@ -199,5 +218,6 @@ def format_flick_phases(report: FlickPhaseReport, ctx: ClipContext) -> str:
             f"  рывк {p.settle_jitter_hu},"
             f"  путь {p.correction_path_hu} HU")
     lines.append("  Кавеат: output-space прокси; конец settle — стабилизация"
-                 " траектории, не реальный выстрел.")
+                 " траектории, не реальный выстрел; путь — нижняя оценка при"
+                 " пропусках детекции.")
     return "\n".join(lines)

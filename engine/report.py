@@ -29,7 +29,7 @@ from engine.profile_store import (
     PlayerProfile,
 )
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 MIN_FLICKS_FOR_DIAGNOSIS = 6
 
 _VERTICAL_NOTES = {"below": "прицел ниже линии головы",
@@ -241,6 +241,7 @@ def _correction_finding(episodes: Sequence[Episode], ctx: ClipContext,
                    "correction_path_hu_median": ph.correction_path_hu_median,
                    "flicks_arrived": ph.flicks_arrived,
                    "flicks_settled": ph.flicks_settled,
+                   "flicks_jitter_n": ph.flicks_jitter_n,
                    "phase_confidence": ph.phase_confidence},
         "confidence": _confidence(rep.flicks_analysed, MIN_FLICKS_FOR_DIAGNOSIS),
         "caveat": ("смена знака может быть стрейфом врага — прокси-метрика по"

@@ -77,8 +77,8 @@ def test_head_box_px_uses_the_same_tiny_head_guard_as_sample_frame():
 # ── Schema 1.1: every evidence entry carries geometry ────────────────────────
 
 
-def test_schema_version_is_1_2():
-    assert SCHEMA_VERSION == "1.2"
+def test_schema_version_is_1_3():
+    assert SCHEMA_VERSION == "1.3"
 
 
 def test_every_evidence_entry_carries_geometry():

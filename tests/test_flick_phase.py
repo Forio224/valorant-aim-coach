@@ -34,6 +34,74 @@ def _x(radials: Sequence[float]) -> List[Tuple[float, float]]:
     return [(r, 0.0) for r in radials]
 
 
+def _flick_frames(pairs, start: int = 100, kind: str = "flick",
+                  speed: float = 50.0, track_id: int = 1) -> Episode:
+    """Эпизод из (frame_offset, radial): кадры задаются явно — для дырок."""
+    samples = tuple(
+        FrameSample(frame_idx=start + fo, dx_hu=r, dy_hu=0.0,
+                    radial_hu=abs(r), head_height_px=63.0)
+        for fo, r in pairs)
+    return Episode(track_id=track_id, start_frame=start,
+                   end_frame=start + pairs[-1][0], samples=samples,
+                   kind=kind, distance_bucket="mid", multi_enemy=False,
+                   multi_from_frame=None, duel_frames=0,
+                   peak_closing_speed_hu_s=speed)
+
+
+# ---- Фаза 4: settle в кадровом пространстве -------------------------------
+# ВАЖНО: у всех дырявых эпизодов ниже плотность >= 0.7 — Task 2 введёт гейт
+# плотности, и более дырявая синтетика стала бы sparse, сломав эти тесты.
+
+def test_gap_inside_settle_run_resets_it():
+    # <=0.35 держится 2 кадра, потом сброс, изолированный 0.3@9 не в счёт:
+    # НЕ «оселся». Плотность 7/10 = 0.7.
+    ep = _flick_frames([(0, 3.0), (1, 0.6), (2, 0.3), (3, 0.3), (4, 0.5),
+                        (5, 0.5), (9, 0.3)])
+    rep = compute_flick_phases([ep], _ctx())
+    p = rep.phases[0]
+    assert p.arrived is True and p.settled is False
+
+
+def test_contiguous_settle_after_gap_still_qualifies():
+    # дырка до band (кадры 3-4), но после неё 3 кадрово-смежных <= 0.35 —
+    # оселся. Плотность 7/9 = 0.78.
+    ep = _flick_frames([(0, 3.0), (1, 2.0), (2, 1.5), (5, 0.6), (6, 0.3),
+                        (7, 0.3), (8, 0.3)])
+    rep = compute_flick_phases([ep], _ctx())
+    assert rep.phases[0].settled is True
+
+
+def test_jitter_none_when_fewer_than_two_adjacent_pairs():
+    # подход к settle дырявый: в сегменте b..s (кадры 2,4,6) ноль кадрово-
+    # смежных пар — jitter None. Settle-прогон (6,7,8) смежный — settled True.
+    # Плотность 7/9 = 0.78.
+    ep = _flick_frames([(0, 3.0), (1, 2.0), (2, 0.6), (4, 0.4), (6, 0.3),
+                        (7, 0.3), (8, 0.3)])
+    rep = compute_flick_phases([ep], _ctx())
+    p = rep.phases[0]
+    assert p.settled is True
+    assert p.settle_jitter_hu is None          # не мусор из склеек через дырки
+    assert rep.flicks_jitter_n == 0
+    assert rep.settle_jitter_hu_median is None  # и отчёт не падает (нет TypeError)
+
+
+def test_jitter_median_gated_by_flicks_jitter_n():
+    # 3 settled-флика (хватает на diagnosis), но jitter дал только один —
+    # медиана рывковости обязана молчать. У clean длинный подход: сегмент b..s
+    # содержит >= 2 смежных пар (иначе и он дал бы None по новому контракту).
+    clean = _x([3, 2, 1, 0.7, 0.5, 0.3, 0.3, 0.3])
+    holey = [(0, 3.0), (1, 2.0), (2, 0.6), (4, 0.4), (6, 0.3), (7, 0.3),
+             (8, 0.3)]
+    eps = [_flick(clean, start=100, track_id=1),
+           _flick_frames(holey, start=300, track_id=2),
+           _flick_frames(holey, start=500, track_id=3)]
+    rep = compute_flick_phases(eps, _ctx())
+    assert rep.flicks_settled == 3
+    assert rep.phase_confidence == "diagnosis"
+    assert rep.flicks_jitter_n == 1
+    assert rep.settle_jitter_hu_median is None
+
+
 # ---- гейт флика ----------------------------------------------------------
 
 def test_non_flick_episodes_ignored():
