@@ -19,6 +19,7 @@ from engine.geometry import FrameSample
 from engine.clip_context import ClipContext
 from engine.episodes import (DEFAULT_DUEL_HU, Episode,
                              MIN_FLICK_DETECTION_DENSITY, detection_density)
+from engine.input_space import cm_per_360
 
 DEADBAND_HU = 0.3              # |offset| below this carries no sign information
 MIN_FLICK_SPEED_HU_S = 20.0    # slower approaches may be enemy/strafe motion
@@ -27,6 +28,8 @@ STALL_MIN_S = 0.08             # how long "stopped short" must last
 STALL_SPEED_HU_S = 6.0         # below this per-axis speed = stalled
 UNDERSHOOT_MIN_HU = 1.0        # a stall counts only meaningfully short of the head
 RESUME_DROP_HU = 0.5           # closing must resume by at least this after a stall
+SENS_HIGH_CM360 = 30.0   # некалибр.: быстрее ~30 см/360 сообщество зовёт высокой
+SENS_LOW_CM360 = 60.0    # некалибр.: медленнее — заведомо «контрольная» сенса
 
 _AXIS_LABELS = {"overshoot": "перелёт", "undershoot": "недолёт", "clean": "чисто"}
 
@@ -157,13 +160,17 @@ def compute_correction(episodes: Sequence[Episode], ctx: ClipContext,
         x_undershoots=counts["x"]["undershoot"],
         y_overshoots=counts["y"]["overshoot"],
         y_undershoots=counts["y"]["undershoot"],
-        symmetry_note=_symmetry_note(len(verdicts), counts),
+        symmetry_note=_symmetry_note(len(verdicts), counts, cm_per_360(ctx.edpi)),
         verdicts=tuple(verdicts),
     )
 
 
-def _symmetry_note(analysed: int, counts: dict) -> str:
-    """Symmetric axis overshoot smells like sens; asymmetric — muscle memory."""
+def _symmetry_note(analysed: int, counts: dict,
+                   cm360: Optional[float] = None) -> str:
+    """Symmetric axis overshoot smells like sens; asymmetric — muscle memory.
+
+    Фаза 4: при известной cm/360 сенса-гипотеза смотрит на реальную сенсу
+    (язык всюду гипотезный — нота, не вердикт)."""
     if analysed < 3:
         return f"мало флик-эпизодов ({analysed}) — сигнатура = гипотеза, не диагноз"
     rate_x = counts["x"]["overshoot"] / analysed
@@ -171,6 +178,13 @@ def _symmetry_note(analysed: int, counts: dict) -> str:
     if rate_x == 0 and rate_y == 0:
         return "перелётов нет — коррекция дисциплинированная"
     if abs(rate_x - rate_y) <= 0.25:
+        if cm360 is not None and cm360 <= SENS_HIGH_CM360:
+            return (f"перелёт симметричен по осям — и сенса высокая"
+                    f" ({cm360:.1f} см/360): сенса-подобная гипотеза усиливается")
+        if cm360 is not None:
+            return (f"перелёт симметричен по осям — но сенса умеренная"
+                    f" ({cm360:.1f} см/360): смотри в сторону доводки/мышечной"
+                    f" памяти")
         return "перелёт симметричен по осям — похоже на сенсу (сенса-подобное)"
     return "перелёт асимметричен по осям — похоже на мышечную память/доводку"
 

@@ -96,6 +96,40 @@ def test_sparse_flick_excluded_from_correction():
     assert rep.flicks_analysed == 0
 
 
+# ── Фаза 4: symmetry_note условна по cm/360 ──────────────────────────────────
+
+
+def _ctx_edpi(edpi):
+    return ClipContext(player_id="p1", clip_id="c1", fps=60.0,
+                       width=1920, height=1080, frame_count=600, edpi=edpi)
+
+
+def _symmetric_overshoot_episodes():
+    """3 флика с перелётом по ОБЕИМ осям — симметричная сигнатура."""
+    dx = [20, 17, 14, 11, 8, 5, 2, -1.0, -1.1, -0.6, -0.2, 0.0] + [0.1] * 8
+    dy = [15, 12, 9, 6, 3, 1, -0.8, -0.9, -0.9, -0.4, 0.0, 0.0] + [0.1] * 8
+    return [ep for _ in range(3) for ep in episodes_from_hu_series(dx, dy)]
+
+
+def test_symmetry_note_known_high_sens():
+    # edpi=800 -> cm/360 ~16.3 < 30 -> «сенса-подобная гипотеза усиливается»
+    rep = compute_correction(_symmetric_overshoot_episodes(), _ctx_edpi(800.0))
+    assert "сенса высокая" in rep.symmetry_note
+    assert "16.3" in rep.symmetry_note
+
+
+def test_symmetry_note_known_moderate_sens():
+    # edpi=280 -> 46.65 > 30 -> «смотри в сторону доводки/мышечной памяти»
+    rep = compute_correction(_symmetric_overshoot_episodes(), _ctx_edpi(280.0))
+    assert "сенса умеренная" in rep.symmetry_note
+
+
+def test_symmetry_note_unknown_sens_keeps_old_text():
+    # edpi=None -> прежний текст «похоже на сенсу (сенса-подобное)»
+    rep = compute_correction(_symmetric_overshoot_episodes(), _ctx_edpi(None))
+    assert "сенса-подобное" in rep.symmetry_note
+
+
 # ── Y axis + filtering ───────────────────────────────────────────────────────
 
 
