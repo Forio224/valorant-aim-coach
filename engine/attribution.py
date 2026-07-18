@@ -21,9 +21,10 @@
 """
 
 import math
+from collections import defaultdict
 from dataclasses import dataclass
 from statistics import median
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Set, Tuple
 
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
@@ -90,9 +91,10 @@ def _mag(v: Vec) -> float:
 def _camera_shift(prev: Dict[int, FrameSample], cur: Dict[int, FrameSample],
                   crosshair: Vec) -> Optional[Vec]:
     """Медиана смещений голов, живых и на N, и на N−1 (медиана — чтобы один
-    стрейфер не утащил оценку). None = оценить нельзя (нет общих треков)."""
+    стрейфер не утащил оценку). None = оценить нельзя (< 2 общих треков): при
+    одном общем треке его собственный стрейф протёк бы в «камеру» на 100%."""
     common = set(prev) & set(cur)
-    if not common:
+    if len(common) < 2:
         return None
     dxs, dys = [], []
     for t in common:
@@ -150,6 +152,14 @@ def attribute_targets(episodes: Sequence[Episode], ctx: ClipContext,
     window = max(int(round(INTENT_WINDOW_S * fps)), 1)
     peak_heads = max(len(frames[f]) for f in order)
 
+    # Трек «жив» на каждом кадре своего эпизода — включая внутренние детекторные
+    # разрывы, которые episodes_from_tracks мостит (gap ≤ gap_tolerance). Нужно,
+    # чтобы удерживать цель сквозь короткую окклюзию, а не считать её ушедшей.
+    alive_at: Dict[int, Set[int]] = defaultdict(set)
+    for ep in episodes:
+        for fr in range(ep.start_frame, ep.end_frame + 1):
+            alive_at[fr].add(ep.track_id)
+
     # Мгновенное намерение по кадрам (камера оценима) + сама камера на кадр.
     cameras: Dict[int, Optional[Vec]] = {}
     inst: Dict[int, Dict[int, float]] = {}
@@ -199,6 +209,12 @@ def attribute_targets(episodes: Sequence[Episode], ctx: ClipContext,
         chosen: Optional[int] = None
 
         cur_visible = current is not None and current in heads
+        if (current is not None and not cur_visible
+                and current in alive_at.get(f, ())):
+            # Цель окклюдирована внутри своего эпизода (детекторный разрыв):
+            # держим её сквозь разрыв, кадр не измеряем, чужую голову не крадём.
+            continue
+
         if cur_visible:
             # Видимую цель держим, пока другой не опередит на SWITCH_MARGIN.
             cur_i = acc_intent(f, current) or 0.0
@@ -241,7 +257,10 @@ def attribute_targets(episodes: Sequence[Episode], ctx: ClipContext,
         assert chosen is not None
         s = heads[chosen]
         is_new = chosen != prev_current
-        switch = is_new and prev_current is not None
+        # Переключение-нестабильность считаем ТОЛЬКО когда уходим с ещё видимой
+        # цели (осознанная смена). Вынужденная переатрибуция после ухода старой
+        # цели или первичный захват — не переключение.
+        switch = is_new and cur_visible
         if switch:
             switches += 1
 

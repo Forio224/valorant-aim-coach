@@ -171,6 +171,47 @@ def test_deterministic_same_tracks_same_attribution():
            (r2.switches, r2.contested_frames, r2.camera_confidence)
 
 
+# ── Регрессии по finding'ам фок-ревью ─────────────────────────────────────────
+
+def test_holds_target_through_intra_episode_occlusion_gap():
+    """Цель окклюдирована на кадре внутри своего эпизода (детекторный разрыв,
+    мостится в эпизод): держим её сквозь разрыв, чужую голову не подхватываем,
+    ложного переключения нет (finding #1)."""
+    ctx = make_ctx()
+    # T виден 0,1,2,4,5,6 (кадр 3 пропущен — разрыв внутри эпизода 0-6)
+    t = make_episode(1, [(f, 1040.0, 540.0) for f in (0, 1, 2, 4, 5, 6)], ctx)
+    b = make_episode(2, [(3, 970.0, 540.0)], ctx)   # мелькнул только на кадре 3
+    res = attribute_targets([t, b], ctx)
+    by_frame = attr_by_frame(res)
+    assert 3 not in by_frame                          # окклюзия — кадр не измеряем
+    assert all(s.track_id == 1 for s in res.samples)  # B цель не крадёт
+    assert res.switches == 0
+    assert by_frame[4].track_id == 1                  # T удержан сквозь разрыв
+
+
+def test_single_common_track_does_not_leak_strafe_as_camera():
+    """Камера по ОДНОМУ общему треку недостоверна (стрейф протекает 100%):
+    новорождённая вторая голова не крадёт цель через фантомное намерение (#2)."""
+    ctx = make_ctx()
+    a = make_episode(1, [(f, 900.0 - 40.0 * f, 540.0) for f in range(4)], ctx)
+    b = make_episode(2, [(2, 1200.0, 540.0)], ctx)   # рождается на кадре 2
+    res = attribute_targets([a, b], ctx)
+    by_frame = attr_by_frame(res)
+    assert by_frame[2].track_id == 1
+    assert 2 not in {s.track_id for s in res.samples}
+    assert res.switches == 0
+
+
+def test_forced_reacquisition_after_target_leaves_is_not_a_switch():
+    """Смена цели, ВЫНУЖДЕННАЯ уходом старой (не видна больше), не считается
+    переключением-нестабильностью (#3)."""
+    ctx = make_ctx()
+    a = make_episode(1, [(f, 1040.0, 540.0) for f in range(3)], ctx)     # 0-2
+    c = make_episode(3, [(f, 1000.0, 540.0) for f in range(4, 7)], ctx)  # 4-6
+    res = attribute_targets([a, c], ctx)
+    assert res.switches == 0
+
+
 # ── Контракты: типы и поля ────────────────────────────────────────────────────
 
 def test_result_shapes():
