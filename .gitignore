@@ -48,3 +48,6 @@ runs/detect/heads_v3/weights/*
 .idea/
 .DS_Store
 Thumbs.db
+
+# Smoke-прогоны коуча (локальные, не для репо)
+coach_*_smoke.json

@@ -23,7 +23,8 @@ from coach.schema import CoachReport
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MODEL = "gemini-2.5-flash"   # vision + structured output + free tier
+# vision + structured output + free tier; 2.5-flash закрыт для новых аккаунтов
+DEFAULT_MODEL = "gemini-3.5-flash"
 
 
 class GeminiCoachClient:
@@ -81,18 +82,17 @@ class GeminiCoachClient:
         feedback: Optional[str] = None,
     ) -> CoachReport:
         """Один вызов Gemini: structured JSON -> Pydantic CoachReport."""
-        # Interactions API: create(request) — один dict; ключ схемы в
-        # SDK-TypedDict называется schema_ (сериализуется в 'schema').
+        # Interactions API, публичный kwargs-стиль: create(model=..., input=[...]).
+        # Список контент-блоков SDK сам оборачивает в user_input-шаг. Ключ схемы
+        # в SDK-TypedDict называется schema_ (сериализуется в 'schema').
         response = self._client.interactions.create(
-            {
-                "model": self.model,
-                "input": self.build_input(report, frame_paths, feedback),
-                "response_format": {
-                    "type": "text",
-                    "mime_type": "application/json",
-                    "schema_": CoachReport.model_json_schema(),
-                },
-            }
+            model=self.model,
+            input=self.build_input(report, frame_paths, feedback),
+            response_format={
+                "type": "text",
+                "mime_type": "application/json",
+                "schema_": CoachReport.model_json_schema(),
+            },
         )
         self._log_usage(response)
         return CoachReport.model_validate_json(response.output_text)

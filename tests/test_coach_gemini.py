@@ -32,19 +32,20 @@ def _client() -> GeminiCoachClient:
 
 
 def test_default_model():
-    assert DEFAULT_MODEL == "gemini-2.5-flash"
-    assert _client().model == "gemini-2.5-flash"
+    # gemini-2.5-flash закрыт для новых аккаунтов (404) — дефолт 3.5
+    assert DEFAULT_MODEL == "gemini-3.5-flash"
+    assert _client().model == "gemini-3.5-flash"
 
 
 def test_model_from_env(monkeypatch):
-    monkeypatch.setenv("COACH_MODEL", "gemini-3.5-flash")
-    assert GeminiCoachClient(api_key="test-key").model == "gemini-3.5-flash"
+    monkeypatch.setenv("COACH_MODEL", "gemini-3.1-flash-lite")
+    assert GeminiCoachClient(api_key="test-key").model == "gemini-3.1-flash-lite"
 
 
 def test_explicit_model_beats_env(monkeypatch):
-    monkeypatch.setenv("COACH_MODEL", "gemini-3.5-flash")
-    c = GeminiCoachClient(api_key="test-key", model="gemini-2.5-flash-lite")
-    assert c.model == "gemini-2.5-flash-lite"
+    monkeypatch.setenv("COACH_MODEL", "gemini-3.1-flash-lite")
+    c = GeminiCoachClient(api_key="test-key", model="gemini-3.5-flash")
+    assert c.model == "gemini-3.5-flash"
 
 
 def test_missing_api_key_raises(monkeypatch):
@@ -96,9 +97,9 @@ def test_generate_parses_structured_output(report, frames_dir, monkeypatch):
     captured: dict = {}
 
     class StubInteractions:
-        # реальный SDK: create(request) — один dict, не kwargs
-        def create(self, request):
-            captured.update(request)
+        # публичный стиль SDK: create(model=..., input=[...], response_format=...)
+        def create(self, **kwargs):
+            captured.update(kwargs)
 
             class Resp:
                 output_text = coach_report.model_dump_json()
@@ -115,7 +116,7 @@ def test_generate_parses_structured_output(report, frames_dir, monkeypatch):
 
     assert isinstance(result, CoachReport)
     assert result.summary == "ок"
-    assert captured["model"] == "gemini-2.5-flash"
+    assert captured["model"] == "gemini-3.5-flash"
     assert isinstance(captured["input"], list)
     assert any(p["type"] == "image" for p in captured["input"])
     # structured output настроен на JSON по Pydantic-схеме
