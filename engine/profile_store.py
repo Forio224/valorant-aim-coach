@@ -16,12 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from aim_metrics import DEFAULT_DUEL_HU, FrameSample, compute_passport
+from engine.geometry import DEFAULT_DUEL_HU, FrameSample, compute_passport
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
 from engine.metrics.consistency import compute_consistency
 from engine.metrics.correction import compute_correction
 from engine.metrics.placement import compute_placement
+from engine.version import METRICS_VERSION
 
 # Below ANY of these the longitudinal verdict stays a hypothesis.
 MIN_CLIPS_FOR_DIAGNOSIS = 2
@@ -71,6 +72,7 @@ def build_clip_record(ctx: ClipContext, samples: Sequence[FrameSample],
     return {
         "clip_id": ctx.clip_id,
         "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "metrics_version": METRICS_VERSION,   # запись без поля = версия 1
         "fps": ctx.fps,
         "frames_measured": passport.frames_measured,
         "duel": {
@@ -89,7 +91,7 @@ def build_clip_record(ctx: ClipContext, samples: Sequence[FrameSample],
             "unengaged": kinds.count("unengaged"),
         },
         "placement": {
-            "total": placement.total_episodes,
+            "total": placement.total_gated,        # только прошедшие гейт пре-айма
             "below": placement.n_below,
             "above": placement.n_above,
             "on_line": placement.n_on_line,
@@ -157,12 +159,20 @@ def _sum_field(clips: List[dict], section: str, field: str) -> int:
 
 
 def aggregate_profile(player_doc: dict) -> PlayerProfile:
-    clips: List[dict] = list(player_doc["clips"].values())
+    # Только записи ТЕКУЩЕЙ методики: определения mae/placement.below менялись,
+    # смешивать методики нельзя (записи без поля = версия 1).
+    all_clips: List[dict] = list(player_doc["clips"].values())
+    clips = [c for c in all_clips
+             if c.get("metrics_version", 1) == METRICS_VERSION]
+    dropped = len(all_clips) - len(clips)
     duel_weights = [(c["duel"], c["duel"]["frames"]) for c in clips]
     episodes_total = _sum_field(clips, "episodes", "total")
     duel_frames_total = sum(c["duel"]["frames"] for c in clips)
     confidence, reason = _confidence(len(clips), episodes_total,
                                      duel_frames_total)
+    if dropped:
+        reason = (f"{reason}; клипов по прежней методике: {dropped} — "
+                  f"в сравнение не входят")
     return PlayerProfile(
         player_id=player_doc["player_id"],
         clips=len(clips),

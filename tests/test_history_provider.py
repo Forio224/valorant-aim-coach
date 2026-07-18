@@ -1,12 +1,15 @@
 # -*- coding: utf-8 -*-
 """Тупой добытчик истории (Фаза 2B): снимки из сессий, без БД."""
 from backend.services.history_provider import build_clip_snapshots
+from engine.version import METRICS_VERSION
 
 
-def _session(clip_id, created_at, findings, drills=None):
+def _session(clip_id, created_at, findings, drills=None,
+             metrics_version=METRICS_VERSION):
     return {
         "clip_id": clip_id, "created_at": created_at,
-        "evidence_report": {"findings": findings},
+        "evidence_report": {"findings": findings,
+                            "metrics_version": metrics_version},
         "coach_report": ({"drills": drills} if drills is not None else None),
     }
 
@@ -55,4 +58,13 @@ def test_coach_failed_session_has_empty_assignments():
 def test_session_without_evidence_report_skipped():
     sessions = [{"clip_id": "c1", "created_at": "2026-07-01T00:00:00",
                  "evidence_report": None, "coach_report": None}]
+    assert build_clip_snapshots(sessions, "cur") == []
+
+
+def test_stale_metrics_version_session_excluded():
+    """Клип по прежней методике не идёт в anchor-серии: иначе смена методики
+    (Фаза 3) посчиталась бы прогрессом игрока (контракт METRICS_VERSION)."""
+    sessions = [_session("c1", "2026-07-01T00:00:00",
+                         [_f("consistency", {"mae_hu": 5.0})],
+                         metrics_version=1)]
     assert build_clip_snapshots(sessions, "cur") == []

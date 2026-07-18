@@ -4,6 +4,7 @@ Sign convention (aim_metrics): image y points DOWN, dy_hu = (head_cy - cross_y)/
 dy < 0  => head ABOVE the crosshair => crosshair BELOW the head line (lazy aim).
 """
 
+import math
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,7 @@ from aim_metrics import Head
 from engine.clip_context import ClipContext
 from engine.episodes import episodes_for_gt, segment_episodes
 from engine.metrics.placement import (
+    PLACEMENT_MAX_BIRTH_HU,
     PlacementReport,
     compute_placement,
     format_placement,
@@ -74,18 +76,48 @@ def test_band_threshold_respected():
 # ── Aggregates + evidence anchors ────────────────────────────────────────────
 
 
-def test_report_aggregates_over_episodes():
+def test_report_aggregates_over_gated_episodes():
     eps = episodes_with_birth_heads(
-        Head(cx=960.0, cy=480.0, height_px=20.0),   # below
-        Head(cx=300.0, cy=440.0, height_px=20.0),   # below (and far left)
-        Head(cx=960.0, cy=545.0, height_px=20.0),   # on line
+        Head(cx=960.0, cy=480.0, height_px=20.0),   # -3 HU, в зоне → зачтён
+        Head(cx=300.0, cy=440.0, height_px=20.0),   # ~33 HU через экран → отсеян
+        Head(cx=960.0, cy=545.0, height_px=20.0),   # на линии, в зоне → зачтён
     )
     report = compute_placement(eps, make_ctx())
-    assert report.total_episodes == 3
-    assert report.n_below == 2
+    assert report.total_seen == 3
+    assert report.total_gated == 2                  # дальний слева — не пре-айм
+    assert report.n_below == 1
     assert report.mean_dy_hu < 0
-    # Every verdict is anchored to the birth frame of its episode.
+    # Every gated verdict is anchored to the birth frame of its episode.
     assert all(v.frame_idx == 0 for v in report.verdicts)
+
+
+# ── Гейт пре-айма по дистанции рождения (анти-survivorship) ───────────────────
+
+
+def test_gate_counts_close_miss_but_excludes_far_crossscreen():
+    """Близкий провал (5.8 HU) засчитан как провал пре-айма (гейт по дистанции,
+    не по вовлечённости); дальний через экран (20 HU) — позиционирование."""
+    ctx = make_ctx()
+    close = Head(cx=960.0 + 5 * 20, cy=480.0, height_px=20.0)   # 5.83 HU, промах
+    far = Head(cx=960.0 + 20 * 20, cy=540.0, height_px=20.0)    # 20 HU
+    report = compute_placement(episodes_with_birth_heads(close, far), ctx)
+    assert report.total_seen == 2 and report.total_gated == 1
+    assert report.n_below == 1                       # близкий промах не спрятан
+    assert len(report.verdicts) == 1
+    assert report.verdicts[0].dy_hu == pytest.approx(-3.0)
+
+
+def test_gate_exposes_seen_gated_and_robust_median():
+    ctx = make_ctx()
+    report = compute_placement(episodes_with_birth_heads(
+        Head(cx=960.0, cy=480.0, height_px=20.0),        # -3 HU, gated
+        Head(cx=960.0, cy=500.0, height_px=20.0),        # -2 HU, gated
+        Head(cx=960.0 + 20 * 20, cy=540.0, height_px=20.0),  # 20 HU, excluded
+    ), ctx)
+    assert (report.total_seen, report.total_gated) == (3, 2)
+    assert report.median_dy_hu == pytest.approx(-2.5)   # median([-3, -2])
+    assert not math.isnan(report.mean_dy_hu)
+    assert report.max_birth_hu == PLACEMENT_MAX_BIRTH_HU
 
 
 def test_verdicts_carry_episode_kind_and_time():
@@ -124,7 +156,8 @@ def test_placement_on_real_clip():
     ctx = make_ctx()
     eps = episodes_for_gt(str(REAL_XML), ctx)
     report = compute_placement(eps, ctx)
-    assert report.total_episodes == len(eps)
-    assert report.n_below + report.n_above + report.n_on_line == len(eps)
+    assert report.total_seen == len(eps)
+    assert report.total_gated <= len(eps)          # дальние появления отсеяны
+    assert report.n_below + report.n_above + report.n_on_line == report.total_gated
     birth_frames = {ep.start_frame for ep in eps}
-    assert {v.frame_idx for v in report.verdicts} == birth_frames
+    assert {v.frame_idx for v in report.verdicts} <= birth_frames

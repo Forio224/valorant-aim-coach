@@ -13,7 +13,7 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-from aim_metrics import MIN_HEAD_PX
+from engine.geometry import MIN_HEAD_PX
 
 DEFAULT_EVIDENCE_CAP = 10      # max frames per clip (VLM image budget)
 JPEG_QUALITY = 90

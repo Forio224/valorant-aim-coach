@@ -23,7 +23,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
-from aim_metrics import DEFAULT_DUEL_HU, FrameSample, Head, sample_frame
+from engine.geometry import DEFAULT_DUEL_HU, FrameSample, Head, sample_frame
 from engine.clip_context import ClipContext
 
 # ── Tunables (seconds-based where temporal) ──────────────────────────────────

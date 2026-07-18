@@ -10,8 +10,12 @@ from pathlib import Path
 import pytest
 
 from aim_metrics import Head
+from engine.attribution import attribute_targets
 from engine.clip_context import ClipContext
-from engine.episodes import episodes_for_gt, segment_episodes
+from engine.episodes import Episode, episodes_for_gt, segment_episodes
+from engine.geometry import MIN_HEAD_PX, pick_target, sample_frame
+from engine.metrics.consistency import compute_consistency
+from engine.metrics.placement import PLACEMENT_MAX_BIRTH_HU
 from engine.report import build_report, report_to_json
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -89,8 +93,10 @@ def test_placement_evidence_anchors_to_birth_frames():
     ctx, samples, episodes = overshoot_clip()
     report = build_report(ctx, samples, episodes)
     placement = next(f for f in report["findings"] if f["metric"] == "placement")
-    assert {e["frame"] for e in placement["evidence"]} == \
-        {ep.start_frame for ep in episodes}
+    # Гейт пре-айма: улики только для появлений в зоне (далёкий флик отсеян).
+    gated_births = {ep.start_frame for ep in episodes
+                    if ep.samples[0].radial_hu <= PLACEMENT_MAX_BIRTH_HU}
+    assert {e["frame"] for e in placement["evidence"]} == gated_births
 
 
 def test_correction_evidence_points_at_the_flip_frame():
@@ -129,6 +135,89 @@ def test_profile_attached_when_given():
                           profile=aggregate_profile(doc))
     assert report["profile"]["player_id"] == "p1"
     assert report["profile"]["confidence"] in ("diagnosis", "hypothesis")
+
+
+# ── Атрибуция цели: разброс без скачка смены цели + мета в consistency ────────
+
+
+def _episode(track_id, points, ctx, height=20.0, duel_hu=3.0):
+    """Синтетический Episode с чистой идентичностью: points = (frame, cx, cy)."""
+    samples = tuple(sample_frame(f, Head(cx, cy, height), ctx.crosshair)
+                    for f, cx, cy in points)
+    return Episode(track_id=track_id, start_frame=points[0][0],
+                   end_frame=points[-1][0], samples=samples, kind="flick",
+                   distance_bucket="mid", multi_enemy=True, multi_from_frame=0,
+                   duel_frames=sum(1 for s in samples if s.radial_hu <= duel_hu),
+                   peak_closing_speed_hu_s=0.0)
+
+
+def _naive_samples(episodes, ctx):
+    """Старое поведение: ближайшая к прицелу голова на каждом кадре (без identity)."""
+    frames: dict = {}
+    for ep in episodes:
+        for s in ep.samples:
+            hu = max(s.head_height_px, MIN_HEAD_PX)
+            frames.setdefault(s.frame_idx, []).append(
+                Head(ctx.crosshair[0] + s.dx_hu * hu,
+                     ctx.crosshair[1] + s.dy_hu * hu, s.head_height_px))
+    out = []
+    for f in sorted(frames):
+        out.append(sample_frame(f, pick_target(frames[f], ctx.crosshair),
+                                ctx.crosshair))
+    return out
+
+
+def test_attribution_lowers_consistency_spread_and_reports_meta():
+    """Цель A удерживается; сосед B ныряет через дуэль собственным движением.
+    Наивная «ближайшая» ловит B и вздувает std; атрибуция держит A → разброс
+    ниже. И consistency.values несёт switches/contested_frames/camera_confidence."""
+    ctx = make_ctx()
+    a = _episode(1, [(f, 1018.0, 540.0) for f in range(10)], ctx)   # 2.9 HU, держим
+    c = _episode(3, [(f, 1260.0, 540.0) for f in range(10)], ctx)   # 15 HU, статичен
+    bx = [1180, 1140, 1060, 1000, 980, 1000, 1060, 1140, 1180, 1180]
+    b = _episode(2, [(f, float(x), 540.0) for f, x in enumerate(bx)], ctx)
+    eps = [a, b, c]
+
+    attribution = attribute_targets(eps, ctx)
+    samples = [s for s in attribution.samples if s.track_id is not None]
+    std_attr = compute_consistency(samples).std_hu
+    std_naive = compute_consistency(_naive_samples(eps, ctx)).std_hu
+    assert std_attr < std_naive                  # скачок смены цели исключён
+
+    report = build_report(ctx, samples, eps, attribution=attribution)
+    cons = next(f for f in report["findings"] if f["metric"] == "consistency")
+    assert cons["values"]["switches"] == attribution.switches
+    assert cons["values"]["contested_frames"] == attribution.contested_frames
+    assert cons["values"]["camera_confidence"] == "diagnosis"   # 3 головы
+
+
+def test_target_choices_block_is_top_level_and_schema_is_1_2():
+    """target_choices — top-level факты выбора (без вердикта), схема 1.2."""
+    ctx = make_ctx()
+    a = _episode(1, [(f, 1018.0, 540.0) for f in range(10)], ctx)
+    bx = [1180, 1140, 1060, 1000, 980, 1000, 1060, 1140, 1180, 1180]
+    b = _episode(2, [(f, float(x), 540.0) for f, x in enumerate(bx)], ctx)
+    c = _episode(3, [(f, 1260.0, 540.0) for f in range(10)], ctx)
+    eps = [a, b, c]
+    attribution = attribute_targets(eps, ctx)
+    samples = [s for s in attribution.samples if s.track_id is not None]
+    report = build_report(ctx, samples, eps, attribution=attribution)
+
+    assert report["schema_version"] == "1.2"
+    assert isinstance(report["target_choices"], list) and report["target_choices"]
+    fields = {"track_id", "from_frame", "to_frame", "chosen_at_radial_hu",
+              "head_height_px", "lateral_speed_hu_s", "switch_cost_frames"}
+    for tc in report["target_choices"]:
+        assert fields <= set(tc)
+    # это НЕ находка: у target_choices нет критериев/дриллов/вердикта
+    assert all(f["metric"] != "target_choices" for f in report["findings"])
+
+
+def test_target_choices_empty_without_attribution():
+    ctx, samples, episodes = overshoot_clip()
+    report = build_report(ctx, samples, episodes)      # без attribution
+    assert report["schema_version"] == "1.2"
+    assert report["target_choices"] == []
 
 
 # ── Real clip ────────────────────────────────────────────────────────────────

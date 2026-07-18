@@ -13,9 +13,11 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from typing import List, Optional, Sequence
 
-from aim_metrics import DEFAULT_DUEL_HU, FrameSample, compute_passport
+from engine.geometry import DEFAULT_DUEL_HU, FrameSample, compute_passport
+from engine.attribution import AttributionResult
 from engine.clip_context import ClipContext
 from engine.episodes import Episode
+from engine.version import METRICS_VERSION
 from engine.metrics.consistency import _DIAGNOSIS_TEXT, compute_consistency
 from engine.metrics.correction import _AXIS_LABELS, compute_correction
 from engine.metrics.drill_progress import compute_drill_progress
@@ -27,7 +29,7 @@ from engine.profile_store import (
     PlayerProfile,
 )
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 MIN_FLICKS_FOR_DIAGNOSIS = 6
 
 _VERTICAL_NOTES = {"below": "прицел ниже линии головы",
@@ -120,28 +122,43 @@ def _placement_finding(episodes: Sequence[Episode], ctx: ClipContext) -> dict:
         })
     return {
         "metric": "placement",
-        "statement": (f"Пре-айм: {rep.n_below} из {rep.total_episodes} эпизодов"
-                      f" — прицел ниже линии головы (≥{rep.band_hu:g} HU);"
-                      f" выше: {rep.n_above}; на линии: {rep.n_on_line}"),
-        "values": {"total": rep.total_episodes, "below": rep.n_below,
+        "statement": (f"Пре-айм: {rep.n_below} из {rep.total_gated} появлений"
+                      f" в зоне (≤{rep.max_birth_hu:g} HU) — прицел ниже линии"
+                      f" головы (≥{rep.band_hu:g} HU); выше: {rep.n_above};"
+                      f" на линии: {rep.n_on_line}"
+                      f" (всего появлений: {rep.total_seen})"),
+        # total = total_gated: вход build_criterion и уверенности считается от
+        # отсеянного множества (пре-айм честно опускается до гипотезы там, где
+        # уверенность держалась на не-пре-айм появлениях).
+        "values": {"total": rep.total_gated, "below": rep.n_below,
                    "above": rep.n_above, "on_line": rep.n_on_line,
-                   "band_hu": rep.band_hu, "mean_dy_hu": _r(rep.mean_dy_hu)},
-        "confidence": _confidence(rep.total_episodes,
+                   "band_hu": rep.band_hu, "mean_dy_hu": _r(rep.mean_dy_hu),
+                   "median_dy_hu": _r(rep.median_dy_hu),
+                   "total_seen": rep.total_seen, "total_gated": rep.total_gated},
+        "confidence": _confidence(rep.total_gated,
                                   MIN_EPISODES_FOR_DIAGNOSIS),
         "evidence": evidence,
     }
 
 
 def _consistency_finding(samples: Sequence[FrameSample], duel_evidence: List[dict],
-                         duel_hu: float) -> dict:
+                         duel_hu: float,
+                         attribution: Optional[AttributionResult] = None) -> dict:
     rep = compute_consistency(samples, duel_hu=duel_hu)
+    values = {"duel_frames": rep.duel_frames,
+              "mae_hu": _r(rep.duel_mae_hu), "std_hu": _r(rep.std_hu),
+              "iqr_hu": _r(rep.iqr_hu), "p95_hu": _r(rep.p95_hu),
+              "diagnosis": rep.diagnosis}
+    if attribution is not None:
+        # Движок честно показывает, сколько кадров было спорных, вместо того
+        # чтобы молча смешивать врагов (Фаза 3, атрибуция цели).
+        values["switches"] = attribution.switches
+        values["contested_frames"] = attribution.contested_frames
+        values["camera_confidence"] = attribution.camera_confidence
     return {
         "metric": "consistency",
         "statement": _DIAGNOSIS_TEXT[rep.diagnosis],
-        "values": {"duel_frames": rep.duel_frames,
-                   "mae_hu": _r(rep.duel_mae_hu), "std_hu": _r(rep.std_hu),
-                   "iqr_hu": _r(rep.iqr_hu), "p95_hu": _r(rep.p95_hu),
-                   "diagnosis": rep.diagnosis},
+        "values": values,
         "confidence": _confidence(rep.duel_frames,
                                   MIN_DUEL_FRAMES_FOR_DIAGNOSIS),
         "evidence": duel_evidence,
@@ -238,21 +255,35 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
                  episodes: Sequence[Episode],
                  duel_hu: float = DEFAULT_DUEL_HU,
                  profile: Optional[PlayerProfile] = None,
-                 drill_history: Sequence = ()) -> dict:
-    """The full evidence-tagged portrait of one clip (+ longitudinal profile)."""
+                 drill_history: Sequence = (),
+                 attribution: Optional[AttributionResult] = None) -> dict:
+    """The full evidence-tagged portrait of one clip (+ longitudinal profile).
+
+    `attribution` (Фаза 3): когда `samples` пришли из `attribute_targets`,
+    consistency честно доносит switches/contested_frames/camera_confidence.
+    """
     duel_evidence = _duel_window_evidence(episodes, ctx, duel_hu)
     report = {
         "schema_version": SCHEMA_VERSION,
+        # Методика измерения: 2B-петля прогресса фильтрует историю по этому
+        # полю, иначе смена методики Фазы 3 посчиталась бы прогрессом игрока.
+        "metrics_version": METRICS_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "clip": asdict(ctx),
         "episodes": _episodes_block(episodes, ctx),
         "findings": [
             _placement_finding(episodes, ctx),
-            _consistency_finding(samples, duel_evidence, duel_hu),
+            _consistency_finding(samples, duel_evidence, duel_hu, attribution),
             _bias_finding(samples, duel_evidence, duel_hu),
             _correction_finding(episodes, ctx, duel_hu),
         ],
     }
+    # Схема 1.2: факты выбора цели top-level блоком, НЕ находкой — у находок
+    # критерии и дриллы, а здесь вердикта нет и быть не должно (база для будущей
+    # нормативной фазы, когда появится сигнал об угрозе).
+    report["target_choices"] = (
+        [asdict(c) for c in attribution.choices] if attribution is not None
+        else [])
     report["drill_progress"] = compute_drill_progress(report["findings"],
                                                       list(drill_history))
     if profile is not None:
