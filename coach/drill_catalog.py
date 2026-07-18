@@ -67,6 +67,18 @@ CATALOG: Dict[str, List[CatalogDrill]] = {
                      "consistency", "3 подхода по 5 минут",
                      "Повторяемость на соревновательном темпе.",
                      {"grandmaster": 1510, "nova": 1610, "astra": 1720, "celestial": 1860}),
+        CatalogDrill("consistency_ingame_t1_range_tempo",
+                     "Range: одиночные в голову на стабильном темпе", "range", 1,
+                     "consistency", "10 минут перед сессией",
+                     "Одиночные выстрелы в голову ботам на ровном темпе — минимизируй разброс, не скорость."),
+        CatalogDrill("consistency_ingame_t2_dm_tempo",
+                     "Valorant DM: стабильный темп под давлением", "ingame", 2,
+                     "consistency", "1 матч DM в день",
+                     "Держи одинаковый ритм дуэлей: одинаковая подготовка выстрела в каждом бою."),
+        CatalogDrill("consistency_ingame_t3_dm_heads",
+                     "Valorant DM: только хедшоты", "ingame", 3,
+                     "consistency", "1 матч DM в день",
+                     "Засчитывай себе только убийства в голову — повторяемость на соревновательном темпе."),
     ],
     "bias": [
         CatalogDrill("bias_t1_vt_1w4ts_novice",
@@ -84,6 +96,18 @@ CATALOG: Dict[str, List[CatalogDrill]] = {
                      "bias", "3 подхода по 5 минут",
                      "Одиночная постановка на соревновательной точности.",
                      {"grandmaster": 1320, "nova": 1420, "astra": 1520, "celestial": 1620}),
+        CatalogDrill("bias_ingame_t1_range_placement",
+                     "Range: одиночная постановка с контролем попадания", "range", 1,
+                     "bias", "10 минут перед сессией",
+                     "Одиночный выстрел -> замри -> посмотри, куда легла пуля относительно головы. Смещение видно без тренажёра."),
+        CatalogDrill("bias_ingame_t2_range_strict",
+                     "Range: постановка на строгой дистанции", "range", 2,
+                     "bias", "10 минут перед сессией",
+                     "Та же постановка на средней/дальней дистанции — систематика смещения заметнее."),
+        CatalogDrill("bias_ingame_t3_dm_control",
+                     "Valorant DM: контроль первой пули", "ingame", 3,
+                     "bias", "1 матч DM в день",
+                     "Отслеживай, куда уходит ПЕРВАЯ пуля каждой дуэли относительно головы."),
     ],
     "correction": [
         CatalogDrill("correction_t1_vt_pasu_novice",
@@ -101,6 +125,18 @@ CATALOG: Dict[str, List[CatalogDrill]] = {
                      "correction", "3 подхода по 5 минут",
                      "Флик близко к соревновательной механике.",
                      {"grandmaster": 910, "nova": 1020, "astra": 1110, "celestial": 1240}),
+        CatalogDrill("correction_ingame_t1_range_flicks",
+                     "Range: флики на новые цели с доводкой", "range", 1,
+                     "correction", "10 минут перед сессией",
+                     "Осознанные флики между ботами: доводи без проскока, гаси перелёт."),
+        CatalogDrill("correction_ingame_t2_range_far",
+                     "Range: флики на дальние цели", "range", 2,
+                     "correction", "10 минут перед сессией",
+                     "Большая амплитуда — перелёт дороже; та же доводка без проскока."),
+        CatalogDrill("correction_ingame_t3_dm_flicks",
+                     "Valorant DM: флики в реальных дуэлях", "ingame", 3,
+                     "correction", "1 матч DM в день",
+                     "Флик на звук/появление — доводка до головы без проскока под давлением."),
     ],
 }
 
@@ -113,25 +149,29 @@ def get_catalog_drill(drill_id: str) -> Optional[CatalogDrill]:
     return _CATALOG_BY_ID.get(drill_id)
 
 
-def _tier1_core_drills() -> List[CatalogDrill]:
-    """Tier-1 дрилл каждой core-метрики (первый клип всегда tier 1)."""
-    return [next(d for d in CATALOG[metric] if d.tier == 1)
-            for metric in CORE_METRICS]
+def _tier1_drills(training_platform: Optional[str]) -> List[CatalogDrill]:
+    """Tier-1 дриллы под платформу игрока (первый клип всегда tier 1).
+
+    None схлопывается в "ingame" СОЗНАТЕЛЬНО (не промптовым дефолтом): Valorant
+    есть у каждого, чей клип мы анализируем; KovaaK's — нет. Рекомендация
+    тренажёра без владения невыполнима; in-game владельцу KovaaK's — лишь
+    неоптимальна. KovaaK's появляется в меню только при явном "kovaaks"."""
+    include_kovaaks = training_platform == "kovaaks"
+    return [d for metric in CORE_METRICS for d in CATALOG[metric]
+            if d.tier == 1 and (include_kovaaks or d.platform != "kovaaks")]
 
 
-def menu_drill_ids() -> frozenset:
-    """Множество допустимых drill_id для первого клипа (только tier-1 core).
-
-    Валидатор гейтит выбор VLM по нему: tier механически зафиксирован на 1,
-    а не оставлен на доверие промпту (Фаза 2 ключуется на drill_id)."""
-    return frozenset(cd.drill_id for cd in _tier1_core_drills())
+def menu_drill_ids(training_platform: Optional[str] = None) -> frozenset:
+    """Допустимые drill_id первого клипа; гейтится валидатором механически."""
+    return frozenset(cd.drill_id for cd in _tier1_drills(training_platform))
 
 
-def menu_for_prompt() -> str:
-    """Меню tier-1 core-дриллов для промпта (первый клип всегда tier 1)."""
+def menu_for_prompt(training_platform: Optional[str] = None) -> str:
+    """Меню tier-1 дриллов платформы для промпта (первый клип всегда tier 1)."""
     lines = ["Меню дриллов (выбирай drill_id ТОЛЬКО отсюда):"]
-    for cd in _tier1_core_drills():
-        lines.append(f"- {cd.drill_id} (метрика {cd.metric}): {cd.name}")
+    for cd in _tier1_drills(training_platform):
+        lines.append(f"- {cd.drill_id} (метрика {cd.metric}, платформа"
+                     f" {cd.platform}): {cd.name}")
     return "\n".join(lines)
 
 

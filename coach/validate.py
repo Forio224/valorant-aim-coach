@@ -235,7 +235,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
     for caveat in coach.caveats:
         errors.extend(_check_causal(caveat, "caveats"))
 
-    menu_ids = menu_drill_ids()
+    menu_ids = menu_drill_ids((evidence.get("clip") or {}).get("training_platform"))
     for drill in coach.drills:
         where = f"дрилл '{drill.drill_id}'"
         cd = get_catalog_drill(drill.drill_id)
@@ -248,7 +248,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
         elif drill.drill_id not in menu_ids:
             errors.append(
                 f"{where} не из меню первого клипа (tier {cd.tier}); "
-                f"первый клип — только tier-1 дриллы"
+                f"первый клип — только tier-1 дриллы твоей платформы"
             )
         errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
         errors.extend(_check_cm_numbers(drill.rationale, numbers_known, where))

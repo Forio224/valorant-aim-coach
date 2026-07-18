@@ -25,7 +25,10 @@ def _evidence() -> dict:
     """Минимальный синтетический evidence-JSON: диагноз + гипотеза."""
     return {
         "schema_version": "1.1",
-        "clip": {"player_id": "p", "clip_id": "c", "fps": 60.0},
+        # training_platform=kovaaks: дефолтный _coach() выбирает kovaaks-дриллы,
+        # с Фазы 4 они легальны только при явной платформе kovaaks
+        "clip": {"player_id": "p", "clip_id": "c", "fps": 60.0,
+                 "training_platform": "kovaaks"},
         "episodes": [
             {
                 "index": 1,
@@ -274,6 +277,24 @@ def test_cm_per_360_from_clip_block_passes():
     ev["clip"]["cm_per_360"] = 46.65
     errors = validate_coach_report(
         _coach(explanation="Твой оборот — 46.65 см (MAE 1.349 HU)."), ev)
+    assert errors == []
+
+
+# --------------------- Фаза 4: меню по training_platform из clip-блока
+
+def test_kovaaks_drill_under_ingame_menu_is_error():
+    # без training_platform (None) -> меню in-game -> kovaaks-дрилл нелегален
+    ev = _evidence()
+    del ev["clip"]["training_platform"]
+    errors = validate_coach_report(
+        _coach(drill_id="consistency_t1_vt_ww5t_novice"), ev)
+    assert any("не из меню" in e for e in errors)
+
+
+def test_kovaaks_drill_with_explicit_kovaaks_platform_passes():
+    # явный kovaaks (дефолт _evidence) -> тот же выбор легален
+    errors = validate_coach_report(
+        _coach(drill_id="consistency_t1_vt_ww5t_novice"), _evidence())
     assert errors == []
 
 

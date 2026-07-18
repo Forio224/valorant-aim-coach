@@ -2,7 +2,8 @@
 """Тесты детерминированного каталога дриллов Voltaic S5 (Фаза 1)."""
 from coach.drill_catalog import (CATALOG, FinalizedPlan, assemble_drill,
                                  build_criterion, finalize_plan,
-                                 get_catalog_drill, menu_for_prompt)
+                                 get_catalog_drill, menu_drill_ids,
+                                 menu_for_prompt)
 from coach.schema import DrillSelection
 
 CORE_METRICS = {"placement", "consistency", "bias", "correction"}
@@ -15,9 +16,11 @@ def _finding(metric, values, confidence="diagnosis"):
 # ---- целостность каталога -------------------------------------------------
 
 def test_every_core_metric_has_three_tiers():
+    # с Фазы 4 у метрик параллельные ветки (kovaaks + in-game) — важно, что
+    # каждая метрика покрывает все три тира, а не что дриллов ровно три
     for metric in CORE_METRICS:
-        tiers = sorted(d.tier for d in CATALOG[metric])
-        assert tiers == [1, 2, 3], metric
+        tiers = set(d.tier for d in CATALOG[metric])
+        assert tiers == {1, 2, 3}, metric
 
 
 def test_drill_ids_unique_across_catalog():
@@ -35,12 +38,40 @@ def test_get_catalog_drill_unknown_is_none():
 
 
 def test_menu_lists_only_tier1_core_drills():
+    # дефолт (платформа не указана) = in-game меню: kovaaks исключён
     menu = menu_for_prompt()
-    assert "consistency_t1_vt_ww5t_novice" in menu
+    assert "consistency_t1_vt_ww5t_novice" not in menu
+    assert "consistency_ingame_t1_range_tempo" in menu
     assert "consistency_t2_vt_ww5t_intermediate" not in menu
-    for metric in CORE_METRICS:
-        t1 = next(d for d in CATALOG[metric] if d.tier == 1)
-        assert t1.drill_id in menu
+    # явный kovaaks возвращает тренажёрные tier-1 в меню
+    kovaaks_menu = menu_for_prompt("kovaaks")
+    assert "consistency_t1_vt_ww5t_novice" in kovaaks_menu
+    assert "consistency_t2_vt_ww5t_intermediate" not in kovaaks_menu
+
+
+# ---- Фаза 4: меню по training_platform ------------------------------------
+
+def test_ingame_menu_is_exactly_four_and_kovaaks_free():
+    for platform in ("ingame", None):
+        ids = menu_drill_ids(platform)
+        assert len(ids) == 4
+        drills = [get_catalog_drill(i) for i in ids]
+        assert all(d.platform != "kovaaks" for d in drills)
+        # анти-сирота: у КАЖДОЙ из 4 метрик есть tier-1 вариант (bias не выпадает)
+        assert {d.metric for d in drills} == set(CORE_METRICS)
+
+
+def test_kovaaks_menu_is_exactly_seven():
+    # placement 1 + consistency 2 + bias 2 + correction 2 — только при явном kovaaks
+    ids = menu_drill_ids("kovaaks")
+    assert len(ids) == 7
+
+
+def test_old_drill_ids_untouched():
+    # история 2B ключуется на id — переименование рвёт её
+    for old in ("consistency_t1_vt_ww5t_novice", "bias_t1_vt_1w4ts_novice",
+                "correction_t1_vt_pasu_novice", "placement_t1_range_preaim_walk"):
+        assert get_catalog_drill(old) is not None
 
 
 # ---- пороги рангов S5 -----------------------------------------------------

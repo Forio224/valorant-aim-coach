@@ -52,8 +52,9 @@ class CvatMeta:
 class ClipContext:
     """Identity + temporal/geometric metadata of one analysed clip.
 
-    `sens`/`edpi`/`agent`/`map_name` are user-supplied input-space facts the
-    video cannot see; they are carried verbatim into reports, never inferred.
+    `sens`/`edpi`/`agent`/`map_name`/`training_platform` are user-supplied
+    input-space facts the video cannot see; they are carried verbatim into
+    reports, never inferred.
     """
     player_id: str
     clip_id: str
@@ -65,6 +66,7 @@ class ClipContext:
     edpi: Optional[float] = None
     agent: Optional[str] = None
     map_name: Optional[str] = None
+    training_platform: Optional[str] = None   # "kovaaks" | "ingame" | None
 
     def __post_init__(self) -> None:
         if not self.player_id:
@@ -77,6 +79,10 @@ class ClipContext:
             raise ValueError(f"resolution must be positive, got {self.width}x{self.height}")
         if self.frame_count <= 0:
             raise ValueError(f"frame_count must be positive, got {self.frame_count}")
+        if self.training_platform not in (None, "kovaaks", "ingame"):
+            raise ValueError(
+                f"training_platform must be 'kovaaks' | 'ingame' | None, "
+                f"got {self.training_platform!r}")
 
     @property
     def crosshair(self) -> Tuple[float, float]:
@@ -151,7 +157,8 @@ def context_for_video(video_path: str, *, player_id: str,
                       sens: Optional[float] = None,
                       edpi: Optional[float] = None,
                       agent: Optional[str] = None,
-                      map_name: Optional[str] = None) -> ClipContext:
+                      map_name: Optional[str] = None,
+                      training_platform: Optional[str] = None) -> ClipContext:
     """ClipContext for the yolo/video source: everything from the container."""
     meta = read_video_meta(video_path)
     return ClipContext(
@@ -162,6 +169,7 @@ def context_for_video(video_path: str, *, player_id: str,
         height=meta.height,
         frame_count=meta.frame_count,
         sens=sens, edpi=edpi, agent=agent, map_name=map_name,
+        training_platform=training_platform,
     )
 
 
@@ -171,7 +179,8 @@ def context_for_gt(xml_path: str, video_path: Optional[str] = None,
                    sens: Optional[float] = None,
                    edpi: Optional[float] = None,
                    agent: Optional[str] = None,
-                   map_name: Optional[str] = None) -> ClipContext:
+                   map_name: Optional[str] = None,
+                   training_platform: Optional[str] = None) -> ClipContext:
     """ClipContext for the gt source: geometry from XML, fps from paired mp4.
 
     Validates the 1:1 frame-index mapping the rest of the engine relies on:
@@ -204,4 +213,5 @@ def context_for_gt(xml_path: str, video_path: Optional[str] = None,
         height=meta.height,
         frame_count=meta.frame_count,
         sens=sens, edpi=edpi, agent=agent, map_name=map_name,
+        training_platform=training_platform,
     )

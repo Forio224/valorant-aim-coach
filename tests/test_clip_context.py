@@ -88,6 +88,15 @@ def test_optional_metadata_defaults_to_none():
                       width=1920, height=1080, frame_count=660)
     assert ctx.sens is None and ctx.edpi is None
     assert ctx.agent is None and ctx.map_name is None
+    assert ctx.training_platform is None
+
+
+def test_training_platform_validated():
+    ClipContext(player_id="p", clip_id="c", fps=60, width=1920, height=1080,
+                frame_count=10, training_platform="kovaaks")   # ок
+    with pytest.raises(ValueError):
+        ClipContext(player_id="p", clip_id="c", fps=60, width=1920,
+                    height=1080, frame_count=10, training_platform="csgo")
 
 
 # ── CVAT meta parsing ───────────────────────────────────────────────────────

@@ -11,7 +11,8 @@
     "sens": 0.35,
     "edpi": 280.0,
     "agent": "Jett",
-    "map_name": "Ascent"
+    "map_name": "Ascent",
+    "training_platform": "kovaaks"
   },
   "episodes": [
     {

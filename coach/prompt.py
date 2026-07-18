@@ -90,7 +90,7 @@ def build_user_text(
             "врага, стрелка — оффсет. Используй их только как контекст "
             "ситуации."
         )
-    parts.append(menu_for_prompt())
+    parts.append(menu_for_prompt((report.get("clip") or {}).get("training_platform")))
     parts.append(
         "Составь коучинг-отчёт CoachReport по правилам системного промпта."
     )

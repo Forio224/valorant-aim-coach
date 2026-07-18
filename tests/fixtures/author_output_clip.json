@@ -11,7 +11,8 @@
     "sens": 0.4,
     "edpi": 320.0,
     "agent": "Reyna",
-    "map_name": "Bind"
+    "map_name": "Bind",
+    "training_platform": "kovaaks"
   },
   "episodes": [
     {

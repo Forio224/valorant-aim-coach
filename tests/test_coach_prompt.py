@@ -51,9 +51,16 @@ def test_build_user_text_mentions_frames_when_present():
 
 
 def test_user_text_includes_catalog_menu():
+    # без платформы — in-game меню (Фаза 4: kovaaks только при явном флаге)
     text = build_user_text({"findings": []}, frame_numbers=[])
-    assert "consistency_t1_vt_ww5t_novice" in text
+    assert "consistency_ingame_t1_range_tempo" in text
+    assert "consistency_t1_vt_ww5t_novice" not in text
     assert menu_for_prompt() in text
+    # kovaaks в clip-блоке переключает меню
+    kovaaks = build_user_text(
+        {"findings": [], "clip": {"training_platform": "kovaaks"}},
+        frame_numbers=[])
+    assert "consistency_t1_vt_ww5t_novice" in kovaaks
 
 
 def test_system_prompt_forbids_inventing_drills():
