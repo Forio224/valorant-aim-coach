@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вариант A — Протокол измерений</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   A. «Протокол измерений» — светлый лабораторный документ.
+   Тёмные кадры из игры — «образцы» на бумаге. Ни одного
+   декоративного цвета: хром серо-бумажный, цвет = вердикт.
+   Сигнатура: измерительная HU-линейка слева от находок.
+   ============================================================ */
+:root {
+  --paper: #f6f5f1;        /* бумага протокола */
+  --paper-2: #efeee8;      /* поля документа */
+  --ink: #16191d;          /* текст */
+  --dim: #6d7480;          /* вторичный текст */
+  --line: #d8d6cd;         /* линейки и рамки */
+  --line-hard: #16191d;    /* жирные линейки разделов */
+  --hit: #177a55;          /* «в цель» */
+  --miss: #bb3a40;         /* «мимо» */
+  --hypo: #a06f14;         /* гипотеза */
+  --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', Consolas, monospace;
+  --w: 880px;
+  --fast: 140ms ease;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--paper-2);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.sheet {
+  max-width: var(--w);
+  margin: 32px auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: none;
+}
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+/* Шапка-гриф: как штамп на титульном листе */
+.masthead {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 20px 48px; border-bottom: 2px solid var(--line-hard);
+}
+.brand { font-weight: 600; letter-spacing: 0.02em; }
+.brand small { color: var(--dim); font-weight: 400; margin-left: 10px; }
+.doc-no { font-family: var(--font-mono); font-size: 12px; color: var(--dim); }
+
+/* Hero: тезис документа */
+.hero { padding: 56px 48px 40px; border-bottom: 1px solid var(--line); }
+.hero h1 { font-size: 30px; font-weight: 600; line-height: 1.25; max-width: 21ch; letter-spacing: -0.01em; }
+.hero p { color: var(--dim); max-width: 52ch; margin-top: 12px; }
+.hero .cta {
+  display: inline-block; margin-top: 24px; padding: 10px 22px;
+  background: var(--ink); color: var(--paper); text-decoration: none;
+  font-weight: 600; font-size: 14px; border: 1px solid var(--ink);
+  transition: background var(--fast);
+}
+.hero .cta:hover { background: #333a42; }
+
+/* Мета клипа: строка регистрации */
+.meta {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  border-bottom: 1px solid var(--line);
+}
+.meta div { padding: 14px 20px; border-right: 1px solid var(--line); }
+.meta div:first-child { padding-left: 48px; }
+.meta div:last-child { border-right: 0; }
+.meta dt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); }
+.meta dd { font-family: var(--font-mono); font-size: 13px; margin-top: 2px; }
+
+/* Разделы: заголовок с номером измерения */
+section { padding: 40px 48px; border-bottom: 1px solid var(--line); }
+h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.14em; font-weight: 600; margin-bottom: 22px; }
+h2 .no { font-family: var(--font-mono); color: var(--dim); margin-right: 10px; font-weight: 400; }
+
+/* ── Сигнатура: HU-линейка ─────────────────────────────────── */
+.finding {
+  display: grid; grid-template-columns: 56px 1fr 150px;
+  gap: 0 24px; padding: 20px 0; border-top: 1px solid var(--line);
+}
+.finding:first-of-type { border-top: 2px solid var(--line-hard); }
+.ruler {
+  position: relative; border-right: 1px solid var(--line-hard);
+  font-family: var(--font-mono); font-size: 9px; color: var(--dim);
+}
+.ruler i {
+  position: absolute; right: 0; width: 6px; height: 1px;
+  background: var(--line-hard); display: block;
+}
+.ruler i.major { width: 12px; }
+.ruler b {
+  position: absolute; right: 16px; font-weight: 400;
+}
+/* маркер фактического показания на линейке */
+.ruler .mark {
+  position: absolute; right: -4px; width: 9px; height: 9px;
+  border-radius: 50%; border: 2px solid var(--paper);
+}
+.f-body h3 { font-size: 16px; font-weight: 600; }
+.f-body .lead { margin-top: 6px; max-width: 58ch; }
+.f-body .note { color: var(--dim); font-size: 13px; margin-top: 6px; max-width: 58ch; }
+.f-values { display: flex; gap: 28px; margin-top: 14px; }
+.f-values dt { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); }
+.f-values dd { font-family: var(--font-mono); font-size: 14px; }
+.verdict { text-align: right; }
+.verdict .badge {
+  display: inline-block; font-family: var(--font-mono); font-size: 11px;
+  text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 10px;
+  border: 1px solid currentColor;
+}
+.verdict .badge.diagnosis { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.verdict .badge.hypothesis { color: var(--hypo); border-style: dashed; }
+.verdict .sev { font-family: var(--font-mono); font-size: 22px; margin-top: 10px; }
+.verdict .sev small { display: block; font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.08em; }
+.c-hit { color: var(--hit); } .c-miss { color: var(--miss); } .c-hypo { color: var(--hypo); }
+.bg-hit { background: var(--hit); } .bg-miss { background: var(--miss); } .bg-hypo { background: var(--hypo); }
+
+/* Кадры-улики: образцы с подписью */
+.frames { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+.frame { border: 1px solid var(--line-hard); }
+.frame .img { aspect-ratio: 16/9; background: linear-gradient(140deg, #1a2027 30%, #232b34 70%); position: relative; }
+.frame .img::after { /* прицел на образце */
+  content: ''; position: absolute; left: 50%; top: 50%; width: 14px; height: 14px;
+  transform: translate(-50%,-50%);
+  background:
+    linear-gradient(var(--paper), var(--paper)) center/2px 100% no-repeat,
+    linear-gradient(var(--paper), var(--paper)) center/100% 2px no-repeat;
+}
+.frame figcaption {
+  display: flex; justify-content: space-between; padding: 8px 12px;
+  font-size: 12px; border-top: 1px solid var(--line-hard);
+}
+.frame .fno { font-family: var(--font-mono); color: var(--dim); }
+
+/* Дриллы: назначения протокола */
+.drills table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.drills th {
+  text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--dim); font-weight: 400; padding: 8px 16px 8px 0;
+  border-bottom: 2px solid var(--line-hard);
+}
+.drills td { padding: 14px 16px 14px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.drills .pr { font-family: var(--font-mono); color: var(--dim); }
+.drills .name { font-weight: 600; }
+.drills .dose { font-family: var(--font-mono); font-size: 13px; }
+.drills .crit { color: var(--hit); font-size: 13px; }
+
+.footer { padding: 18px 48px; color: var(--dim); font-size: 12px; display: flex; justify-content: space-between; }
+
+@media (max-width: 760px) {
+  .sheet { margin: 0; border: 0; }
+  .masthead, .hero, section, .footer { padding-left: 20px; padding-right: 20px; }
+  .meta { grid-template-columns: 1fr 1fr; }
+  .meta div:first-child { padding-left: 20px; }
+  .finding { grid-template-columns: 40px 1fr; }
+  .verdict { grid-column: 2; text-align: left; margin-top: 10px; }
+  .frames { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; }
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+  <header class="masthead">
+    <div class="brand">АИМ-ПАСПОРТ <small>протокол измерений</small></div>
+    <div class="doc-no">CLIP2 · SCHEMA 1.3 · METRICS v3</div>
+  </header>
+
+  <section class="hero" style="border-bottom:0">
+    <h1>Числа считает движок. Коуч только объясняет.</h1>
+    <p>Загрузите клип — детектор найдёт головы врагов, движок измерит прицел
+       в Head Units, а коуч переведёт вердикты на человеческий и назначит план.</p>
+    <a class="cta" href="#">Загрузить клип на разбор</a>
+  </section>
+
+  <dl class="meta">
+    <div><dt>Игрок</dt><dd>friend</dd></div>
+    <div><dt>Сенса</dt><dd>46.65 см/360</dd></div>
+    <div><dt>Кадров</dt><dd>660 @ 60 fps</dd></div>
+    <div><dt>Тренировки</dt><dd>в Valorant</dd></div>
+  </dl>
+
+  <section>
+    <h2><span class="no">02</span>Находки движка</h2>
+
+    <article class="finding">
+      <div class="ruler" style="height:120px">
+        <i class="major" style="top:0"></i><b style="top:-6px">0</b>
+        <i style="top:30px"></i>
+        <i class="major" style="top:60px"></i><b style="top:54px">1</b>
+        <i style="top:90px"></i>
+        <i class="major" style="bottom:0"></i><b style="bottom:-6px">2</b>
+        <span class="mark bg-hypo" style="top:82px" title="1.39 HU"></span>
+      </div>
+      <div class="f-body">
+        <h3>Разброс в дуэли выше нормы</h3>
+        <p class="lead">Прицел «гуляет» вокруг головы: одинаковых повторов мало,
+           каждая дуэль — немного другая механика.</p>
+        <p class="note">Пока это гипотеза: дуэльных кадров мало, движок не даёт диагноз.</p>
+        <dl class="f-values">
+          <div><dt>std</dt><dd>1.39 HU</dd></div>
+          <div><dt>mae</dt><dd>1.35 HU</dd></div>
+          <div><dt>окно</dt><dd>96 кадров</dd></div>
+        </dl>
+      </div>
+      <div class="verdict">
+        <span class="badge hypothesis">гипотеза</span>
+        <div class="sev c-hypo">1.39×<small>от порога</small></div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="ruler" style="height:120px">
+        <i class="major" style="top:0"></i><b style="top:-6px">0</b>
+        <i class="major" style="top:60px"></i><b style="top:54px">2</b>
+        <i class="major" style="bottom:0"></i><b style="bottom:-6px">4</b>
+        <span class="mark bg-miss" style="top:100px" title="3.33 HU"></span>
+      </div>
+      <div class="f-body">
+        <h3>Пре-айм ниже линии головы</h3>
+        <p class="lead">На появлении врага прицел ждёт его корпус, а не голову —
+           каждый раз доводка начинается с лишнего вертикального пути.</p>
+        <dl class="f-values">
+          <div><dt>ниже линии</dt><dd>2 из 3</dd></div>
+          <div><dt>медиана dy</dt><dd>−1.46 HU</dd></div>
+        </dl>
+        <div class="frames">
+          <figure class="frame">
+            <div class="img"></div>
+            <figcaption><span class="fno">КАДР 177</span><span>появление слева, прицел ниже</span></figcaption>
+          </figure>
+          <figure class="frame">
+            <div class="img"></div>
+            <figcaption><span class="fno">КАДР 341</span><span>появление справа, прицел ниже</span></figcaption>
+          </figure>
+        </div>
+      </div>
+      <div class="verdict">
+        <span class="badge hypothesis">гипотеза</span>
+        <div class="sev c-miss">3.33×<small>от порога</small></div>
+      </div>
+    </article>
+
+    <article class="finding">
+      <div class="ruler" style="height:90px">
+        <i class="major" style="top:0"></i><b style="top:-6px">0</b>
+        <i class="major" style="bottom:0"></i><b style="bottom:-6px">1</b>
+        <span class="mark bg-hit" style="top:22px" title="0.26"></span>
+      </div>
+      <div class="f-body">
+        <h3>Систематического смещения нет</h3>
+        <p class="lead">Вертикальный биас в пределах допуска — прицел не «прибит»
+           ни выше, ни ниже голов.</p>
+        <dl class="f-values">
+          <div><dt>y-bias</dt><dd>+0.13 HU</dd></div>
+          <div><dt>допуск</dt><dd>0.50 HU</dd></div>
+        </dl>
+      </div>
+      <div class="verdict">
+        <span class="badge hypothesis">гипотеза</span>
+        <div class="sev c-hit">0.26×<small>от порога</small></div>
+      </div>
+    </article>
+  </section>
+
+  <section class="drills">
+    <h2><span class="no">03</span>Назначенные дриллы</h2>
+    <table>
+      <thead><tr><th>№</th><th>Упражнение</th><th>Доза</th><th>Критерий успеха</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="pr">1</td>
+          <td><div class="name">Range: pre-aim walk на уровне головы</div></td>
+          <td class="dose">5 мин разминкой</td>
+          <td class="crit">≤ 1 появления из 3 с прицелом ниже линии головы</td>
+        </tr>
+        <tr>
+          <td class="pr">2</td>
+          <td><div class="name">Range: одиночные в голову на стабильном темпе</div></td>
+          <td class="dose">10 мин перед сессией</td>
+          <td class="crit">средняя ошибка в дуэли &lt; 1.15 HU на следующем клипе</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="footer">
+    <span>Движок Phase A · schema 1.3</span>
+    <span>Числа выше — вердикты движка, не мнение коуча</span>
+  </footer>
+</div>
+</body>
+</html>

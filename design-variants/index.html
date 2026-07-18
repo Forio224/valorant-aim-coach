@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Аим-паспорт — варианты дизайна</title>
+<style>
+:root { --bg: #101418; --panel: #161b22; --line: #2a323c; --paper: #e8e6e1; --dim: #8a94a0; --acc: #57c99b; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--paper); font-family: 'Segoe UI', sans-serif;
+  height: 100vh; display: flex; flex-direction: column; }
+header { display: flex; align-items: center; gap: 8px; padding: 10px 16px;
+  border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+header b { margin-right: 12px; font-size: 14px; }
+button { background: var(--panel); color: var(--dim); border: 1px solid var(--line);
+  padding: 8px 16px; font: inherit; font-size: 13px; cursor: pointer; border-radius: 3px; }
+button:hover { color: var(--paper); }
+button.on { color: var(--bg); background: var(--acc); border-color: var(--acc); font-weight: 600; }
+#note { width: 100%; color: var(--dim); font-size: 12.5px; padding: 4px 2px 0; }
+iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+</style>
+</head>
+<body>
+<header>
+  <b>Аим-паспорт · 3 направления</b>
+  <button data-src="a-product.html" data-note="A. «Протокол измерений» — светлый лабораторный документ: HU-линейка, штампы вердиктов, кадры как образцы. Спокойно и достоверно; тем, кто хочет читать отчёт как медкарту прицела.">A · Продуктовый</button>
+  <button data-src="b-alive.html" data-note="B. «Телеметрия» — тёмный живой экран: прицел в hero дрейфует и оседает (это и есть settle), полосы severity наполняются, пайплайн бежит. Движение объясняет продукт; тем, кто хочет «вау» без потери смысла.">B · Живой</button>
+  <button data-src="c-character.html" data-note="C. «Спектаторский HUD» — характер: Russo One, скосы, рамки-уголки прицела на находках, glow по вердиктам. Смотришь на свой аим как кастер на матч; тем, кто хочет киберспортивной подачи.">C · Характерный</button>
+  <div id="note"></div>
+</header>
+<iframe id="view" title="Предпросмотр варианта"></iframe>
+<script>
+const btns = document.querySelectorAll('button');
+const view = document.getElementById('view');
+const note = document.getElementById('note');
+btns.forEach(b => b.addEventListener('click', () => {
+  btns.forEach(x => x.classList.remove('on'));
+  b.classList.add('on');
+  view.src = b.dataset.src;
+  note.textContent = b.dataset.note;
+}));
+btns[0].click();
+</script>
+</body>
+</html>

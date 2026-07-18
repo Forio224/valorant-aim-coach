@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вариант C — Спектаторский HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Manrope:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   C. «Спектаторский HUD» — живой. Оркестровка движения:
+   1) загрузка: kill-feed → заголовок → лазер прочерчивается →
+      CTA; призрачный прицел медленно вращается всё время
+   2) скролл: карточки входят каскадом, severity-«обойма»
+      заряжается деление за делением, печати контрактов
+      «пропечатываются»
+   3) микро: уголки «захватывают» карточку при наведении,
+      точка статуса мягко дышит (не мигает)
+   Всё гаснет при prefers-reduced-motion.
+   ============================================================ */
+:root {
+  --field: #0d1117;
+  --panel: #151c26;
+  --panel-up: #1b2432;
+  --line: #2a3648;
+  --paper: #f2f4f7;
+  --dim: #8593a5;
+  --hit: #3ddc97;
+  --miss: #ff4655;
+  --hypo: #ffb454;
+  --font-display: 'Russo One', sans-serif;
+  --font-body: 'Manrope', 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  --fast: 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  --rise: 600ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background:
+    repeating-linear-gradient(-55deg, transparent 0 26px, rgba(133,147,165,0.025) 26px 27px),
+    var(--field);
+  color: var(--paper); font-family: var(--font-body); font-size: 15px; line-height: 1.6;
+}
+:focus-visible { outline: 2px solid var(--hypo); outline-offset: 2px; }
+.wrap { max-width: 1140px; margin: 0 auto; padding: 0 24px; }
+
+/* Разделитель с риской прицела */
+.tick-rule { position: relative; border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
+.tick-rule::after { content: ''; position: absolute; left: 50%; top: -5px; width: 1px; height: 9px;
+  background: var(--dim); }
+
+/* Шапка */
+.masthead { display: flex; justify-content: space-between; align-items: center; padding: 18px 0; }
+.brand { font-family: var(--font-display); font-size: 17px; letter-spacing: 0.08em; text-transform: uppercase; }
+.brand span { color: var(--miss); }
+.round { font-family: var(--font-mono); font-size: 11px; color: var(--dim);
+  border: 1px solid var(--line); padding: 6px 14px; clip-path: var(--cut); background: var(--panel);
+  display: flex; gap: 10px; align-items: center; }
+/* точка статуса: мягкое дыхание с ореолом вместо дёрганого мигания */
+.round i { width: 6px; height: 6px; background: var(--hit); border-radius: 50%; position: relative; }
+.round i::after { content: ''; position: absolute; inset: -4px; border-radius: 50%;
+  border: 1px solid var(--hit); opacity: 0;
+  animation: halo 3.6s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+@keyframes halo {
+  0%   { transform: scale(0.4); opacity: 0; }
+  35%  { opacity: 0.55; }
+  70%, 100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* ── Hero: загрузочная последовательность ──────────────────── */
+.hero { padding: 72px 0 56px; position: relative; overflow: hidden; }
+.hero .ghost { position: absolute; right: -140px; top: 50%; margin-top: -240px;
+  width: 480px; height: 480px; opacity: 0.05; pointer-events: none; }
+.hero .ghost circle, .hero .ghost line { stroke: var(--paper); fill: none; }
+/* внутреннее пунктирное кольцо медленно вращается — ambient-жизнь */
+.hero .ghost .spin { transform-origin: 240px 240px; animation: spin 46s linear infinite; }
+.hero .ghost .spin2 { transform-origin: 240px 240px; animation: spin 80s linear infinite reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.enter { opacity: 0; transform: translateY(14px); animation: enter var(--rise) forwards; }
+.enter.d1 { animation-delay: 80ms; }
+.enter.d2 { animation-delay: 220ms; }
+.enter.d3 { animation-delay: 420ms; }
+.enter.d4 { animation-delay: 560ms; }
+@keyframes enter { to { opacity: 1; transform: none; } }
+
+.feed { display: inline-flex; align-items: center; gap: 10px; font-family: var(--font-mono);
+  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
+  background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--miss);
+  padding: 7px 16px; clip-path: var(--cut); }
+.feed b { color: var(--miss); font-weight: 700; }
+.feed .x { color: var(--dim); }
+.hero h1 { font-family: var(--font-display); font-size: clamp(30px, 5vw, 54px);
+  line-height: 1.1; text-transform: uppercase; margin-top: 22px; max-width: 17ch; position: relative; }
+.hero h1 .outline { color: transparent; -webkit-text-stroke: 1.5px var(--paper); }
+/* лазер прочерчивается после появления заголовка */
+.hero h1 .laser { position: relative; white-space: nowrap; }
+.hero h1 .laser::after { content: ''; position: absolute; left: 2px; right: 2px; bottom: -8px;
+  height: 2px; background: var(--miss); box-shadow: 0 0 12px rgba(255, 70, 85, 0.7);
+  transform: scaleX(0); transform-origin: left;
+  animation: laser 700ms cubic-bezier(0.16, 1, 0.3, 1) 900ms forwards; }
+@keyframes laser { to { transform: scaleX(1); } }
+.hero p { color: var(--dim); max-width: 52ch; margin-top: 26px; }
+.cta { display: inline-block; margin-top: 28px; padding: 14px 34px; background: var(--miss);
+  color: #fff; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; font-size: 14px;
+  text-decoration: none; clip-path: var(--cut); transition: filter var(--fast), transform var(--fast); }
+.cta:hover { filter: brightness(1.12); transform: translateY(-1px); }
+.cta:active { transform: translateY(0); }
+
+/* ── HUD-уголки: «захват цели» ─────────────────────────────── */
+.hud { position: relative; transition: transform var(--fast), background var(--fast); }
+.hud::before, .hud::after,
+.hud > .c::before, .hud > .c::after { content: ''; position: absolute; width: 15px; height: 15px;
+  border: 2px solid var(--dim); transition: transform var(--fast), border-color var(--fast); }
+.hud::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.hud::after { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+.hud > .c::before { bottom: -1px; left: -1px; border-right: 0; border-top: 0; }
+.hud > .c::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.hud:hover { transform: translateY(-2px); }
+.hud:hover::before { transform: translate(5px, 5px); }
+.hud:hover::after { transform: translate(-5px, 5px); }
+.hud:hover > .c::before { transform: translate(5px, -5px); }
+.hud:hover > .c::after { transform: translate(-5px, -5px); }
+.hud:hover::before, .hud:hover::after,
+.hud:hover > .c::before, .hud:hover > .c::after { border-color: var(--verdict, var(--paper)); }
+.hud.is-target::before, .hud.is-target::after,
+.hud.is-target > .c::before, .hud.is-target > .c::after { border-color: var(--miss); }
+
+/* Бенто-грид: каскадный вход по скроллу */
+section { padding: 48px 0; }
+h2 { font-family: var(--font-display); font-size: 17px; text-transform: uppercase;
+  letter-spacing: 0.08em; margin-bottom: 26px; }
+h2 small { color: var(--dim); font-family: var(--font-mono); font-size: 11px; margin-left: 14px;
+  letter-spacing: 0.1em; }
+.bento { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+.tile { background: var(--panel); padding: 26px; position: relative; }
+.tile.big { grid-column: span 2; grid-row: span 2; background: var(--panel-up); }
+.tile.wide { grid-column: span 3; }
+.tile h3 { font-family: var(--font-display); font-size: 14px; text-transform: uppercase;
+  letter-spacing: 0.04em; padding-right: 96px; }
+.tile p { color: var(--dim); font-size: 14px; margin-top: 10px; max-width: 56ch; }
+.badge { position: absolute; top: 26px; right: 26px; font-family: var(--font-mono);
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; padding: 4px 10px;
+  clip-path: var(--cut); }
+.badge.hypo { color: var(--field); background: var(--hypo); }
+
+/* reveal-каскад (класс in ставит IntersectionObserver) */
+.rv { opacity: 0; transform: translateY(18px); transition: opacity 550ms ease, transform 550ms cubic-bezier(0.16, 1, 0.3, 1); }
+.rv:nth-child(2) { transition-delay: 90ms; }
+.rv:nth-child(3) { transition-delay: 180ms; }
+.rv:nth-child(4) { transition-delay: 270ms; }
+.rv.in { opacity: 1; transform: none; }
+
+/* ── Severity-«обойма»: заряжается деление за делением ─────── */
+.mag { display: flex; align-items: flex-end; gap: 14px; margin-top: 20px; }
+.mag .num { font-family: var(--font-mono); font-weight: 700; font-size: 30px; line-height: 1; }
+.mag .num small { display: block; font-size: 9px; font-weight: 400; color: var(--dim);
+  letter-spacing: 0.14em; text-transform: uppercase; margin-top: 4px; }
+.mag .cells { display: flex; gap: 4px; padding-bottom: 3px; }
+.mag .cells i { width: 7px; height: 20px; background: var(--line); transform: skewX(-12deg); }
+.mag .cells i.f { background: var(--line); box-shadow: none; transition: background 180ms ease, box-shadow 180ms ease; }
+.rv.in .cells i.f { background: var(--verdict); box-shadow: 0 0 8px var(--halo); }
+/* стагер зарядки: каждое следующее деление чуть позже */
+.rv.in .cells i.f:nth-child(1) { transition-delay: 350ms; }
+.rv.in .cells i.f:nth-child(2) { transition-delay: 430ms; }
+.rv.in .cells i.f:nth-child(3) { transition-delay: 510ms; }
+.rv.in .cells i.f:nth-child(4) { transition-delay: 590ms; }
+.rv.in .cells i.f:nth-child(5) { transition-delay: 670ms; }
+.rv.in .cells i.f:nth-child(6) { transition-delay: 750ms; }
+.rv.in .cells i.f:nth-child(7) { transition-delay: 830ms; }
+.rv.in .cells i.f:nth-child(8) { transition-delay: 910ms; }
+.v-miss { --verdict: var(--miss); --halo: rgba(255, 70, 85, 0.45); }
+.v-hypo { --verdict: var(--hypo); --halo: rgba(255, 180, 84, 0.4); }
+.v-hit  { --verdict: var(--hit);  --halo: rgba(61, 220, 151, 0.4); }
+.v-miss .num { color: var(--miss); text-shadow: 0 0 14px rgba(255, 70, 85, 0.35); }
+.v-hypo .num { color: var(--hypo); text-shadow: 0 0 14px rgba(255, 180, 84, 0.3); }
+.v-hit  .num { color: var(--hit);  text-shadow: 0 0 14px rgba(61, 220, 151, 0.3); }
+
+/* Кадр-улика: медленный проблеск, как блик по монитору */
+.tile .frame { margin-top: 20px; aspect-ratio: 16/9; overflow: hidden;
+  background: linear-gradient(150deg, #171f2a 30%, #202b3a 75%); position: relative; }
+.tile .frame::before { content: ''; position: absolute; top: -20%; bottom: -20%; width: 45%;
+  background: linear-gradient(100deg, transparent, rgba(242,244,247,0.045), transparent);
+  animation: sweep 7s ease-in-out infinite; }
+@keyframes sweep { 0%, 55% { left: -50%; } 85%, 100% { left: 110%; } }
+.tile .frame::after { content: ''; position: absolute; left: 50%; top: 50%; width: 16px; height: 16px;
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(var(--miss), var(--miss)) center/2px 100% no-repeat,
+    linear-gradient(var(--miss), var(--miss)) center/100% 2px no-repeat; }
+.frame-cap { display: flex; justify-content: space-between; font-family: var(--font-mono);
+  font-size: 11px; color: var(--dim); margin-top: 8px; }
+
+/* Контракты: печать «пропечатывается» при входе */
+.contracts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+.contract { background: var(--panel); padding: 24px; clip-path: var(--cut);
+  border-left: 3px solid var(--miss); }
+.contract .no { font-family: var(--font-display); color: var(--miss); font-size: 20px; }
+.contract h3 { font-size: 15px; font-weight: 800; margin-top: 8px; }
+.contract .dose { font-family: var(--font-mono); font-size: 11px; color: var(--dim);
+  margin-top: 4px; letter-spacing: 0.06em; }
+.stamp { margin-top: 16px; padding: 10px 14px; border: 1px dashed var(--line);
+  font-size: 13px; color: var(--hit); opacity: 0; transform: scale(1.12);
+  transition: opacity 300ms ease 500ms, transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1) 500ms; }
+.rv.in .stamp { opacity: 1; transform: scale(1); }
+.stamp::before { content: '✓'; font-family: var(--font-mono); font-weight: 700; margin-right: 8px; }
+
+.footer { border-top: 1px solid var(--line); margin-top: 32px; padding: 20px 0;
+  font-family: var(--font-mono); font-size: 11px; color: var(--dim);
+  display: flex; justify-content: space-between; letter-spacing: 0.08em; position: relative; }
+.footer::before { content: ''; position: absolute; left: 50%; top: -5px; width: 1px; height: 9px;
+  background: var(--dim); }
+
+@media (max-width: 860px) {
+  .bento { grid-template-columns: 1fr; }
+  .tile.big, .tile.wide { grid-column: auto; grid-row: auto; }
+  .contracts { grid-template-columns: 1fr; }
+  .hero .ghost { display: none; }
+  .tile h3 { padding-right: 0; margin-top: 26px; }
+}
+/* при reduced-motion всё видно сразу, ничего не движется */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important;
+      animation-delay: 0ms !important; transition-delay: 0ms !important; }
+  .enter, .rv, .stamp { opacity: 1 !important; transform: none !important; }
+  .rv .cells i.f { background: var(--verdict); }
+  .hero h1 .laser::after { transform: scaleX(1); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand">АИМ<span>-</span>ПАСПОРТ</div>
+    <div class="round"><i></i>КЛИП CLIP2 · ИГРОК FRIEND</div>
+  </header>
+  <hr class="tick-rule">
+
+  <section class="hero">
+    <svg class="ghost" viewBox="0 0 480 480" aria-hidden="true">
+      <circle cx="240" cy="240" r="180" stroke-width="1"/>
+      <g class="spin">
+        <circle cx="240" cy="240" r="90" stroke-width="1" stroke-dasharray="4 6"/>
+      </g>
+      <g class="spin2">
+        <circle cx="240" cy="240" r="140" stroke-width="1" stroke-dasharray="1 26"/>
+      </g>
+      <line x1="240" y1="20" x2="240" y2="150" stroke-width="1"/>
+      <line x1="240" y1="330" x2="240" y2="460" stroke-width="1"/>
+      <line x1="20" y1="240" x2="150" y2="240" stroke-width="1"/>
+      <line x1="330" y1="240" x2="460" y2="240" stroke-width="1"/>
+    </svg>
+    <div class="feed enter d1"><b>ДВИЖОК</b><span class="x">✕</span><span>пре-айм — главная утечка дуэли</span></div>
+    <h1 class="enter d2">Твой прицел<br>под <span class="outline laser">прицелом</span></h1>
+    <p class="enter d3">Движок отсмотрел 660 кадров и вынес вердикты. Красное — куда утекают дуэли,
+       зелёное — что уже поставлено. Коуч собрал план на завтра.</p>
+    <a class="cta enter d4" href="#">Загрузить свой клип</a>
+  </section>
+
+  <section>
+    <h2>Вердикты <small>SCHEMA 1.3 · METRICS V3</small></h2>
+    <div class="bento">
+      <article class="tile big hud is-target v-miss rv"><span class="c"></span>
+        <span class="badge hypo">гипотеза</span>
+        <h3>Пре-айм ниже линии головы</h3>
+        <p>Прицел встречает врага по корпусу: 2 появления из 3 начинаются с лишней
+           вертикальной доводки — медиана −1.46 HU. Это главная утечка времени в дуэли.</p>
+        <div class="mag">
+          <div class="num">3.33×<small>от порога</small></div>
+          <div class="cells" aria-hidden="true">
+            <i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i>
+            <i class="f"></i><i class="f"></i><i></i><i></i><i></i>
+          </div>
+        </div>
+        <div class="frame"></div>
+        <div class="frame-cap"><span>КАДР 177</span><span>появление слева · прицел ниже</span></div>
+      </article>
+
+      <article class="tile hud v-hypo rv"><span class="c"></span>
+        <span class="badge hypo">гипотеза</span>
+        <h3>Разброс в дуэли</h3>
+        <p>std 1.39 HU при пороге 1.0 — повторяемость плавает.</p>
+        <div class="mag">
+          <div class="num">1.39×<small>от порога</small></div>
+          <div class="cells" aria-hidden="true">
+            <i class="f"></i><i class="f"></i><i class="f"></i><i class="f"></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+      </article>
+
+      <article class="tile hud v-hit rv"><span class="c"></span>
+        <span class="badge hypo">гипотеза</span>
+        <h3>Вертикальный биас</h3>
+        <p>+0.13 HU — систематического смещения нет.</p>
+        <div class="mag">
+          <div class="num">0.26×<small>от порога</small></div>
+          <div class="cells" aria-hidden="true">
+            <i class="f"></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+      </article>
+
+      <article class="tile wide hud v-hit rv"><span class="c"></span>
+        <span class="badge hypo">гипотеза</span>
+        <h3>Коррекция на фликах</h3>
+        <p>Перелётов и недолётов нет — доводка дисциплинированная. Сенса 46.65 см/360:
+           умеренная, гипотезу «виновата сенса» движок не усиливает.</p>
+        <div class="mag">
+          <div class="num">0.0×<small>чистые флики</small></div>
+          <div class="cells" aria-hidden="true">
+            <i></i><i></i><i></i><i></i><i></i>
+            <i></i><i></i><i></i><i></i><i></i>
+          </div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>Контракты на завтра <small>ПЛАТФОРМА: VALORANT</small></h2>
+    <div class="contracts">
+      <article class="contract rv">
+        <div class="no">01</div>
+        <h3>Range: pre-aim walk на уровне головы</h3>
+        <div class="dose">5 МИН РАЗМИНКОЙ · БЕЗ СТРЕЛЬБЫ</div>
+        <div class="stamp">закрыт, когда ≤ 1 появления из 3 с прицелом ниже линии головы</div>
+      </article>
+      <article class="contract rv">
+        <div class="no">02</div>
+        <h3>Range: одиночные на стабильном темпе</h3>
+        <div class="dose">10 МИН ПЕРЕД СЕССИЕЙ</div>
+        <div class="stamp">закрыт, когда средняя ошибка в дуэли &lt; 1.15 HU</div>
+      </article>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>ЧИСЛА СЧИТАЕТ ТОЛЬКО ДВИЖОК</span>
+    <span>КОУЧ ОБЪЯСНЯЕТ · НЕ ИЗМЕРЯЕТ</span>
+  </footer>
+</div>
+<script>
+  // Каскадный вход секций; при reduced-motion CSS показывает всё сразу
+  const io = new IntersectionObserver((entries) => entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), { threshold: 0.18 });
+  document.querySelectorAll('.rv').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

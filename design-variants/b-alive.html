@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Вариант B — Телеметрия</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=Inter:wght@400;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   B. «Телеметрия» — тёмный живой экран. Движение объясняет
+   продукт: прицел в hero дрейфует и «оседает» (это и есть
+   settle-метрика), полосы severity наполняются, пайплайн бежит.
+   Сигнатура: живой прицел + трасса флика.
+   ============================================================ */
+:root {
+  --deep: #0a0e13;
+  --panel: #111820;
+  --line: #1f2a35;
+  --grid: rgba(90, 130, 160, 0.07);
+  --paper: #e9edf1;
+  --dim: #7d8894;
+  --signal: #46d7b8;      /* телеметрия/акцент = «в цель» */
+  --miss: #ff5257;
+  --hypo: #e8b04b;
+  --font-display: 'Play', sans-serif;
+  --font-body: 'Inter', 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background:
+    linear-gradient(var(--grid) 1px, transparent 1px) 0 0 / 100% 56px,
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px) 0 0 / 56px 100%,
+    var(--deep);
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.6;
+}
+:focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+/* Шапка: канал телеметрии */
+.masthead {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 0; border-bottom: 1px solid var(--line);
+}
+.brand { font-family: var(--font-display); font-weight: 700; letter-spacing: 0.06em; }
+.brand em { color: var(--signal); font-style: normal; }
+.live { font-family: var(--font-mono); font-size: 11px; color: var(--dim); display: flex; gap: 8px; align-items: center; }
+.live::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--signal);
+  animation: pulse 1.8s ease-in-out infinite; }
+
+/* ── Hero: живой прицел ─────────────────────────────────────── */
+.hero { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 48px; align-items: center;
+  padding: 72px 0 64px; }
+.hero h1 { font-family: var(--font-display); font-weight: 700; font-size: clamp(28px, 4vw, 46px);
+  line-height: 1.12; letter-spacing: 0.01em; }
+.hero h1 em { font-style: normal; color: var(--signal); }
+.hero p { color: var(--dim); max-width: 46ch; margin-top: 16px; }
+.cta { display: inline-block; margin-top: 28px; padding: 12px 26px;
+  background: var(--signal); color: var(--deep); font-weight: 600; font-size: 14px;
+  text-decoration: none; border-radius: 4px; transition: transform 160ms ease, box-shadow 160ms ease; }
+.cta:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(70, 215, 184, 0.25); }
+
+.scope { position: relative; aspect-ratio: 1; max-width: 380px; margin-left: auto;
+  border: 1px solid var(--line); border-radius: 50%; background: radial-gradient(circle, #0d141c 40%, #0a0e13 100%); }
+.scope::before, .scope::after { content: ''; position: absolute; background: var(--line); }
+.scope::before { left: 0; right: 0; top: 50%; height: 1px; }
+.scope::after { top: 0; bottom: 0; left: 50%; width: 1px; }
+/* трасса флика: подлёт → перелёт → доводка */
+.trace { position: absolute; inset: 0; }
+.trace path { fill: none; stroke: var(--miss); stroke-width: 1.5; stroke-dasharray: 300;
+  stroke-dashoffset: 300; animation: draw 3.2s ease-out infinite; opacity: 0.8; }
+/* сам прицел: дрейф и settle */
+.cross { position: absolute; left: 50%; top: 50%; width: 26px; height: 26px;
+  animation: settle 3.2s ease-out infinite; }
+.cross i { position: absolute; background: var(--paper); }
+.cross i:nth-child(1) { left: 50%; top: 0; width: 2px; height: 8px; transform: translateX(-50%); }
+.cross i:nth-child(2) { left: 50%; bottom: 0; width: 2px; height: 8px; transform: translateX(-50%); }
+.cross i:nth-child(3) { left: 0; top: 50%; width: 8px; height: 2px; transform: translateY(-50%); }
+.cross i:nth-child(4) { right: 0; top: 50%; width: 8px; height: 2px; transform: translateY(-50%); }
+.scope figcaption { position: absolute; bottom: -30px; width: 100%; text-align: center;
+  font-family: var(--font-mono); font-size: 11px; color: var(--dim); }
+
+@keyframes settle {
+  0%   { transform: translate(-160px, 60px); }
+  38%  { transform: translate(14px, -10px); }   /* перелёт */
+  55%  { transform: translate(-4px, 2px); }
+  70%, 100% { transform: translate(-13px, -13px); } /* оседание в центр */
+}
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes pulse { 50% { opacity: 0.3; } }
+
+/* ── Пайплайн: бегущая лента станций ───────────────────────── */
+.pipeline { display: flex; border: 1px solid var(--line); border-radius: 6px;
+  overflow: hidden; background: var(--panel); }
+.station { flex: 1; padding: 18px 22px; border-right: 1px solid var(--line); position: relative; }
+.station:last-child { border-right: 0; }
+.station b { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.1em;
+  color: var(--dim); display: block; }
+.station span { font-size: 13px; color: var(--dim); }
+.station.is-done b { color: var(--signal); }
+.station.is-active b { color: var(--paper); }
+.station.is-active::after { content: ''; position: absolute; left: 0; bottom: 0; height: 2px;
+  background: var(--signal); animation: fill 2.4s ease-in-out infinite; }
+@keyframes fill { from { width: 0; } to { width: 100%; } }
+
+/* ── Находки: карточки с полосой severity ──────────────────── */
+section { padding: 56px 0; }
+h2 { font-family: var(--font-display); font-size: 20px; letter-spacing: 0.04em; margin-bottom: 24px; }
+.findings { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 24px; opacity: 0; transform: translateY(16px); transition: opacity 500ms ease, transform 500ms ease; }
+.card.in { opacity: 1; transform: none; }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.card h3 { font-size: 16px; font-weight: 600; }
+.tag { font-family: var(--font-mono); font-size: 10px; text-transform: uppercase;
+  letter-spacing: 0.1em; padding: 3px 9px; border-radius: 3px; white-space: nowrap; }
+.tag.hypo { color: var(--hypo); border: 1px dashed var(--hypo); }
+.card p { color: var(--dim); font-size: 14px; margin-top: 10px; }
+.sev { margin-top: 18px; }
+.sev-label { display: flex; justify-content: space-between; font-family: var(--font-mono);
+  font-size: 11px; color: var(--dim); margin-bottom: 6px; }
+.sev-bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; }
+.sev-bar i { display: block; height: 100%; width: 0; border-radius: 2px;
+  transition: width 900ms cubic-bezier(0.16, 1, 0.3, 1) 200ms; }
+.card.in .sev-bar i { width: var(--sv); }
+.sev-bar .hit { background: var(--signal); }
+.sev-bar .miss { background: var(--miss); }
+.sev-bar .hypo { background: var(--hypo); }
+.mono { font-family: var(--font-mono); }
+
+/* Дриллы: план тренировки */
+.drills { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+.drill { border: 1px solid var(--line); border-radius: 6px; padding: 22px; background: var(--panel); }
+.drill .pr { font-family: var(--font-display); font-size: 26px; color: var(--signal); }
+.drill h3 { font-size: 15px; font-weight: 600; margin-top: 6px; }
+.drill .dose { font-family: var(--font-mono); font-size: 12px; color: var(--dim); margin-top: 4px; }
+.drill .crit { font-size: 13px; color: var(--signal); margin-top: 12px;
+  border-top: 1px solid var(--line); padding-top: 12px; }
+
+.footer { border-top: 1px solid var(--line); padding: 20px 0; color: var(--dim);
+  font-size: 12px; font-family: var(--font-mono); }
+
+@media (max-width: 820px) {
+  .hero { grid-template-columns: 1fr; }
+  .scope { margin: 0 auto; }
+  .findings, .drills { grid-template-columns: 1fr; }
+  .pipeline { flex-direction: column; }
+  .station { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  .card { opacity: 1; transform: none; }
+  .card .sev-bar i { width: var(--sv); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div class="brand">AIM<em>//</em>ПАСПОРТ</div>
+    <div class="live">ТЕЛЕМЕТРИЯ АКТИВНА</div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1>Каждый флик<br>оставляет <em>трассу</em>.</h1>
+      <p>Движок читает её по кадрам: подлёт, перелёт, доводка. Загрузите клип —
+         и увидите свой прицел в числах, а не в ощущениях.</p>
+      <a class="cta" href="#">Загрузить клип</a>
+    </div>
+    <figure class="scope">
+      <svg class="trace" viewBox="0 0 380 380" aria-hidden="true">
+        <path d="M 30 250 C 120 210, 180 170, 204 180 S 178 176, 177 177"/>
+      </svg>
+      <div class="cross" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+      <figcaption>флик · перелёт 0.6 HU · settle 3 кадра</figcaption>
+    </figure>
+  </section>
+
+  <div class="pipeline" role="list">
+    <div class="station is-done" role="listitem"><b>01 DETECTING</b><span>головы найдены: 660 кадров</span></div>
+    <div class="station is-done" role="listitem"><b>02 MEASURING</b><span>4 находки, схема 1.3</span></div>
+    <div class="station is-active" role="listitem"><b>03 COACHING</b><span>коуч объясняет числа…</span></div>
+  </div>
+
+  <section>
+    <h2>Находки движка</h2>
+    <div class="findings">
+      <article class="card" style="--sv: 66%">
+        <div class="card-head"><h3>Пре-айм ниже линии головы</h3><span class="tag hypo">гипотеза</span></div>
+        <p>Прицел ждёт корпус, а не голову: <span class="mono">2 из 3</span> появлений
+           начинаются с лишней вертикальной доводки (<span class="mono">−1.46 HU</span>).</p>
+        <div class="sev"><div class="sev-label"><span>SEVERITY</span><span>3.33× порога</span></div>
+          <div class="sev-bar"><i class="miss"></i></div></div>
+      </article>
+      <article class="card" style="--sv: 46%">
+        <div class="card-head"><h3>Разброс в дуэли</h3><span class="tag hypo">гипотеза</span></div>
+        <p>Повторяемость хромает: <span class="mono">std 1.39 HU</span> при пороге
+           <span class="mono">1.0</span> — каждая дуэль чуть другая.</p>
+        <div class="sev"><div class="sev-label"><span>SEVERITY</span><span>1.39× порога</span></div>
+          <div class="sev-bar"><i class="hypo"></i></div></div>
+      </article>
+      <article class="card" style="--sv: 13%">
+        <div class="card-head"><h3>Вертикальный биас</h3><span class="tag hypo">гипотеза</span></div>
+        <p>Систематики нет: <span class="mono">+0.13 HU</span> — в пределах допуска.</p>
+        <div class="sev"><div class="sev-label"><span>SEVERITY</span><span>0.26× порога</span></div>
+          <div class="sev-bar"><i class="hit"></i></div></div>
+      </article>
+      <article class="card" style="--sv: 4%">
+        <div class="card-head"><h3>Коррекция на фликах</h3><span class="tag hypo">гипотеза</span></div>
+        <p>Перелётов и недолётов не зафиксировано — доводка дисциплинированная.</p>
+        <div class="sev"><div class="sev-label"><span>SEVERITY</span><span>0.0× порога</span></div>
+          <div class="sev-bar"><i class="hit"></i></div></div>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>План тренировки</h2>
+    <div class="drills">
+      <article class="drill">
+        <div class="pr">01</div>
+        <h3>Range: pre-aim walk на уровне головы</h3>
+        <div class="dose">5 минут разминкой · без стрельбы</div>
+        <div class="crit">✓ ≤ 1 появления из 3 с прицелом ниже линии головы</div>
+      </article>
+      <article class="drill">
+        <div class="pr">02</div>
+        <h3>Range: одиночные на стабильном темпе</h3>
+        <div class="dose">10 минут перед сессией</div>
+        <div class="crit">✓ средняя ошибка в дуэли &lt; 1.15 HU на следующем клипе</div>
+      </article>
+    </div>
+  </section>
+
+  <footer class="footer">ДВИЖОК v3 · SCHEMA 1.3 · ЧИСЛА СЧИТАЕТ ТОЛЬКО ДВИЖОК</footer>
+</div>
+<script>
+  // scroll-reveal карточек; при reduced-motion CSS уже показал всё
+  const io = new IntersectionObserver((es) => es.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }), { threshold: 0.2 });
+  document.querySelectorAll('.card').forEach(c => io.observe(c));
+</script>
+</body>
+</html>
