@@ -188,6 +188,35 @@ def test_attribution_lowers_consistency_spread_and_reports_meta():
     assert cons["values"]["camera_confidence"] == "diagnosis"   # 3 головы
 
 
+def test_target_choices_block_is_top_level_and_schema_is_1_2():
+    """target_choices — top-level факты выбора (без вердикта), схема 1.2."""
+    ctx = make_ctx()
+    a = _episode(1, [(f, 1018.0, 540.0) for f in range(10)], ctx)
+    bx = [1180, 1140, 1060, 1000, 980, 1000, 1060, 1140, 1180, 1180]
+    b = _episode(2, [(f, float(x), 540.0) for f, x in enumerate(bx)], ctx)
+    c = _episode(3, [(f, 1260.0, 540.0) for f in range(10)], ctx)
+    eps = [a, b, c]
+    attribution = attribute_targets(eps, ctx)
+    samples = [s for s in attribution.samples if s.track_id is not None]
+    report = build_report(ctx, samples, eps, attribution=attribution)
+
+    assert report["schema_version"] == "1.2"
+    assert isinstance(report["target_choices"], list) and report["target_choices"]
+    fields = {"track_id", "from_frame", "to_frame", "chosen_at_radial_hu",
+              "head_height_px", "lateral_speed_hu_s", "switch_cost_frames"}
+    for tc in report["target_choices"]:
+        assert fields <= set(tc)
+    # это НЕ находка: у target_choices нет критериев/дриллов/вердикта
+    assert all(f["metric"] != "target_choices" for f in report["findings"])
+
+
+def test_target_choices_empty_without_attribution():
+    ctx, samples, episodes = overshoot_clip()
+    report = build_report(ctx, samples, episodes)      # без attribution
+    assert report["schema_version"] == "1.2"
+    assert report["target_choices"] == []
+
+
 # ── Real clip ────────────────────────────────────────────────────────────────
 
 

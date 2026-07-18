@@ -28,7 +28,7 @@ from engine.profile_store import (
     PlayerProfile,
 )
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 MIN_FLICKS_FOR_DIAGNOSIS = 6
 
 _VERTICAL_NOTES = {"below": "прицел ниже линии головы",
@@ -267,6 +267,12 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
             _correction_finding(episodes, ctx, duel_hu),
         ],
     }
+    # Схема 1.2: факты выбора цели top-level блоком, НЕ находкой — у находок
+    # критерии и дриллы, а здесь вердикта нет и быть не должно (база для будущей
+    # нормативной фазы, когда появится сигнал об угрозе).
+    report["target_choices"] = (
+        [asdict(c) for c in attribution.choices] if attribution is not None
+        else [])
     report["drill_progress"] = compute_drill_progress(report["findings"],
                                                       list(drill_history))
     if profile is not None:
