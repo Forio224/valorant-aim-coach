@@ -263,7 +263,7 @@ def test_attribution_lowers_consistency_spread_and_reports_meta():
 
 
 def test_target_choices_block_is_top_level_and_schema_is_current():
-    """target_choices — top-level факты выбора (без вердикта), схема 1.3."""
+    """target_choices — top-level факты выбора (без вердикта), схема 1.4."""
     ctx = make_ctx()
     a = _episode(1, [(f, 1018.0, 540.0) for f in range(10)], ctx)
     bx = [1180, 1140, 1060, 1000, 980, 1000, 1060, 1140, 1180, 1180]
@@ -274,7 +274,7 @@ def test_target_choices_block_is_top_level_and_schema_is_current():
     samples = [s for s in attribution.samples if s.track_id is not None]
     report = build_report(ctx, samples, eps, attribution=attribution)
 
-    assert report["schema_version"] == "1.3"
+    assert report["schema_version"] == "1.4"
     assert isinstance(report["target_choices"], list) and report["target_choices"]
     fields = {"track_id", "from_frame", "to_frame", "chosen_at_radial_hu",
               "head_height_px", "lateral_speed_hu_s", "switch_cost_frames"}
@@ -287,7 +287,7 @@ def test_target_choices_block_is_top_level_and_schema_is_current():
 def test_target_choices_empty_without_attribution():
     ctx, samples, episodes = overshoot_clip()
     report = build_report(ctx, samples, episodes)      # без attribution
-    assert report["schema_version"] == "1.3"
+    assert report["schema_version"] == "1.4"
     assert report["target_choices"] == []
 
 

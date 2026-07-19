@@ -123,6 +123,11 @@ GET /api/v1/analysis/{session_id}
   для обратной совместимости
 - `coach/validate.py` — механическая анти-выдумка: кадры/HU-числа/
   metric-ссылки/confidence-язык; `run_coach_validated` = 1 ретрай → coach_failed
+- `backend/services/kovaaks_client.py` — внешний ранк Voltaic S5 из
+  неофициального API kovaaks.com по SteamID64 (KOVAAKS_S5_BENCHMARK_IDS);
+  мягкая деградация: сбой → отчёт без блока external_benchmark, не FAILED.
+  Гейт тира kovaaks-дриллов и цитаты коуча едят ОДНИ числа (max(rank_maxes)
+  снапшота, фолбэк — rank_thresholds каталога). steam_id в отчёт не пишется.
 - `coach_cli.py` — офлайн-прогон коуча на готовом evidence-JSON;
   `--provider gemini|anthropic` + `--model` для сравнения моделей
 
