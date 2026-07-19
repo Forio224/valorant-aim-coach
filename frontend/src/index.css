@@ -921,3 +921,82 @@ h2 small {
   .rv .cells i.f { background: var(--verdict); box-shadow: none; }
   .hero h1 .laser::after { transform: scaleX(1); }
 }
+
+/* ── Аккаунт Discord (Этап 2): шапка + история + шаринг ─────── */
+.auth-bar {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.auth-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+}
+.auth-name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--paper);
+}
+
+.session-history ul { list-style: none; }
+.session-history li + li { border-top: 1px solid var(--line); }
+.session-row {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.6rem 0.2rem;
+  background: transparent;
+  border: 0;
+  color: var(--paper);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--fast);
+}
+.session-row:hover { background: var(--panel-up); }
+.session-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  min-width: 9ch;
+}
+.session-status-hit { color: var(--hit); }
+.session-status-miss { color: var(--miss); }
+.session-status-hypo { color: var(--hypo); }
+.session-clip { color: var(--dim); }
+.session-date {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.report-head-actions { display: flex; align-items: center; gap: 0.6rem; }
+.share { display: flex; align-items: center; gap: 0.6rem; }
+.share-toast {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--hit);
+}
+.share-toast[role='alert'] { color: var(--miss); }
+.share-manual {
+  font-size: 12px;
+  color: var(--dim);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.share-manual input {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--paper);
+  background: var(--panel-up);
+  border: 1px solid var(--line);
+  padding: 0.3rem 0.5rem;
+  min-width: 26ch;
+}

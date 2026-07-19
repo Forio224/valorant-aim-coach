@@ -25,6 +25,7 @@ async function uploadDirect({ file, ...meta }) {
   const resp = await fetch(`${API_BASE}/api/v1/analysis/upload`, {
     method: 'POST',
     body: form,
+    credentials: 'include',
   });
   if (!resp.ok) await throwHttpError(resp);
   return resp.json();
@@ -42,6 +43,7 @@ async function uploadPresigned({ file, ...meta }, presign) {
   const resp = await fetch(`${API_BASE}/api/v1/analysis/start`, {
     method: 'POST',
     body: form,
+    credentials: 'include',
   });
   if (!resp.ok) await throwHttpError(resp);
   return resp.json();
@@ -55,6 +57,7 @@ export async function uploadClip(params) {
       form.append('filename', params.file.name);
       return form;
     })(),
+    credentials: 'include',
   });
   if (!presignResp.ok) await throwHttpError(presignResp);
   const presign = await presignResp.json();
@@ -65,12 +68,60 @@ export async function uploadClip(params) {
   return uploadDirect(params);
 }
 
-export async function fetchAnalysis(sessionId) {
-  const resp = await fetch(`${API_BASE}/api/v1/analysis/${sessionId}`);
+export async function fetchAnalysis(sessionId, share) {
+  const qs = share ? `?share=${encodeURIComponent(share)}` : '';
+  const resp = await fetch(`${API_BASE}/api/v1/analysis/${sessionId}${qs}`, {
+    credentials: 'include',
+  });
   if (!resp.ok) {
-    throw new Error(`сервер ответил ${resp.status}`);
+    // status нужен App: 404/400 = «отчёт недоступен», не сетевой сбой
+    const err = new Error(`сервер ответил ${resp.status}`);
+    err.status = resp.status;
+    throw err;
   }
   return resp.json();
+}
+
+// ------------------------------------------------------------ auth (Этап 2)
+// JWT живёт в httpOnly-куке — все запросы с credentials: 'include'.
+
+async function jsonOrThrow(resp) {
+  if (!resp.ok) await throwHttpError(resp);
+  return resp.json();
+}
+
+export async function getMe() {
+  return jsonOrThrow(await fetch(`${API_BASE}/api/v1/auth/me`, {
+    credentials: 'include',
+  }));
+}
+
+export async function getLoginUrl() {
+  return jsonOrThrow(await fetch(`${API_BASE}/api/v1/auth/login`, {
+    credentials: 'include',
+  }));
+}
+
+export async function logout() {
+  return jsonOrThrow(await fetch(`${API_BASE}/api/v1/auth/logout`, {
+    method: 'POST',
+    credentials: 'include',
+  }));
+}
+
+export async function listSessions() {
+  return jsonOrThrow(await fetch(`${API_BASE}/api/v1/analysis`, {
+    credentials: 'include',
+  }));
+}
+
+export async function createShareLink(sessionId) {
+  return jsonOrThrow(
+    await fetch(`${API_BASE}/api/v1/analysis/${sessionId}/share`, {
+      method: 'POST',
+      credentials: 'include',
+    }),
+  );
 }
 
 /** "/evidence/.../frame_000177.jpg" (и presigned-URL с query) -> 177. */

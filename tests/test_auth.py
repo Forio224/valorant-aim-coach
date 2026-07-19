@@ -14,8 +14,9 @@ from backend.database import DatabaseManager
 class FakeDiscord:
     """Контракт auth.DiscordOAuth без сети."""
 
-    def __init__(self):
+    def __init__(self, avatar="abc"):
         self.exchanged = []
+        self.avatar = avatar
 
     def authorize_url(self, state: str) -> str:
         return f"https://discord.com/oauth2/authorize?state={state}"
@@ -23,7 +24,7 @@ class FakeDiscord:
     async def exchange_code(self, code: str) -> dict:
         self.exchanged.append(code)
         return {"discord_id": "111222333", "username": "shooter",
-                "avatar": "abc"}
+                "avatar": self.avatar}
 
 
 @pytest.fixture
@@ -92,14 +93,46 @@ def test_repeat_login_upserts_same_user(api):
 def test_me_anonymous_is_null(api):
     client, *_ = api
     client.cookies.clear()
-    assert client.get("/api/v1/auth/me").json() == {"user": None}
+    assert client.get("/api/v1/auth/me").json() == {
+        "mode": "discord", "user": None}
 
 
-def test_logout_clears_cookie(api):
+def test_me_mode_off(monkeypatch):
+    import backend.main as main
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+    client = TestClient(main.app)
+    assert client.get("/api/v1/auth/me").json() == {"mode": "off",
+                                                    "user": None}
+
+
+def test_me_returns_ready_avatar_url(api):
     client, db, fake, auth = api
     _login(client, auth)
-    client.post("/api/v1/auth/logout")
-    assert client.get("/api/v1/auth/me").json() == {"user": None}
+    user = client.get("/api/v1/auth/me").json()["user"]
+    # URL собирает сервер: фронту discord_id не отдаётся
+    assert user["avatar_url"] == (
+        "https://cdn.discordapp.com/avatars/111222333/abc.png")
+    assert "avatar" not in user and "discord_id" not in user
+
+
+def test_me_null_avatar_falls_back_to_embed(api):
+    client, db, fake, auth = api
+    fake.avatar = None
+    _login(client, auth)
+    user = client.get("/api/v1/auth/me").json()["user"]
+    index = (111222333 >> 22) % 6
+    assert user["avatar_url"] == (
+        f"https://cdn.discordapp.com/embed/avatars/{index}.png")
+
+
+def test_logout_returns_json_and_clears_cookie(api):
+    client, db, fake, auth = api
+    _login(client, auth)
+    resp = client.post("/api/v1/auth/logout")
+    # Клиент — fetch: JSON, а не 303-редирект на HTML фронта
+    assert resp.status_code == 200
+    assert resp.json() == {"ok": True}
+    assert client.get("/api/v1/auth/me").json()["user"] is None
 
 
 def test_upload_requires_login_when_auth_on(api, tmp_path):

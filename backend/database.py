@@ -154,6 +154,22 @@ class DatabaseManager:
                 .where(AnalysisSession.owner_user_id == owner_user_id)
                 .where(AnalysisSession.created_at >= since)).one()
 
+    def list_recent_sessions(self, owner_user_id: Optional[UUID],
+                             limit: int = 20):
+        """Последние разборы аккаунта для истории на фронте (Этап 2).
+
+        owner_user_id=None — анонимные сессии (dev-режим AUTH_MODE=off)."""
+        with Session(self.engine) as session:
+            query = select(AnalysisSession)
+            if owner_user_id is None:
+                query = query.where(AnalysisSession.owner_user_id.is_(None))
+            else:
+                query = query.where(
+                    AnalysisSession.owner_user_id == owner_user_id)
+            query = (query.order_by(AnalysisSession.created_at.desc())
+                     .limit(limit))
+            return list(session.exec(query).all())
+
     def list_sessions_for_player(self, player_id: str,
                                  owner_user_id: Optional[UUID] = None):
         # Порядок отдаёт SQL (2C): история прогресса не должна зависеть от
