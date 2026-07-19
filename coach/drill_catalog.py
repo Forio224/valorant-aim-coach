@@ -32,6 +32,7 @@ class CatalogDrill:
     dose: str               # доза-плейсхолдер; пользователь тюнит доменно
     instruction: str        # фокус инструкции (разводит bias/consistency)
     rank_thresholds: Optional[Dict[str, int]] = None
+    kovaaks_scenario: Optional[str] = None   # имя сценария в API KovaaK's
 
 
 # Семантика тиров = сложность механики в тренажёре (перенос в игру меряет
@@ -56,17 +57,20 @@ CATALOG: Dict[str, List[CatalogDrill]] = {
                      "VT ww5t Novice S5", "kovaaks", 1,
                      "consistency", "3 подхода по 5 минут",
                      "Сустейн-повторяемость: держи темп, минимизируй разброс попаданий.",
-                     {"iron": 990, "bronze": 1090, "silver": 1190, "gold": 1290}),
+                     {"iron": 990, "bronze": 1090, "silver": 1190, "gold": 1290},
+                     kovaaks_scenario="VT ww5t Novice S5"),
         CatalogDrill("consistency_t2_vt_ww5t_intermediate",
                      "VT ww5t Intermediate S5", "kovaaks", 2,
                      "consistency", "3 подхода по 5 минут",
                      "Та же повторяемость под возросшим темпом/точностью.",
-                     {"platinum": 1310, "diamond": 1400, "jade": 1490, "master": 1560}),
+                     {"platinum": 1310, "diamond": 1400, "jade": 1490, "master": 1560},
+                     kovaaks_scenario="VT ww5t Intermediate S5"),
         CatalogDrill("consistency_t3_vt_ww5t_advanced",
                      "VT ww5t Advanced S5", "kovaaks", 3,
                      "consistency", "3 подхода по 5 минут",
                      "Повторяемость на соревновательном темпе.",
-                     {"grandmaster": 1510, "nova": 1610, "astra": 1720, "celestial": 1860}),
+                     {"grandmaster": 1510, "nova": 1610, "astra": 1720, "celestial": 1860},
+                     kovaaks_scenario="VT ww5t Advanced S5"),
         CatalogDrill("consistency_ingame_t1_range_tempo",
                      "Range: одиночные в голову на стабильном темпе", "range", 1,
                      "consistency", "10 минут перед сессией",
@@ -85,17 +89,20 @@ CATALOG: Dict[str, List[CatalogDrill]] = {
                      "VT 1w4ts Novice S5", "kovaaks", 1,
                      "bias", "3 подхода по 5 минут",
                      "Точная одиночная постановка — здесь видно систематическое смещение прицела.",
-                     {"iron": 820, "bronze": 915, "silver": 1010, "gold": 1110}),
+                     {"iron": 820, "bronze": 915, "silver": 1010, "gold": 1110},
+                     kovaaks_scenario="VT 1w4ts Novice S5"),
         CatalogDrill("bias_t2_vt_1w3ts_intermediate",
                      "VT 1w3ts Intermediate S5", "kovaaks", 2,
                      "bias", "3 подхода по 5 минут",
                      "Меньше целей, выше требования к точной постановке.",
-                     {"platinum": 1120, "diamond": 1220, "jade": 1300, "master": 1380}),
+                     {"platinum": 1120, "diamond": 1220, "jade": 1300, "master": 1380},
+                     kovaaks_scenario="VT 1w3ts Intermediate S5"),
         CatalogDrill("bias_t3_vt_1w2ts_advanced",
                      "VT 1w2ts Advanced S5", "kovaaks", 3,
                      "bias", "3 подхода по 5 минут",
                      "Одиночная постановка на соревновательной точности.",
-                     {"grandmaster": 1320, "nova": 1420, "astra": 1520, "celestial": 1620}),
+                     {"grandmaster": 1320, "nova": 1420, "astra": 1520, "celestial": 1620},
+                     kovaaks_scenario="VT 1w2ts Advanced S5"),
         CatalogDrill("bias_ingame_t1_range_placement",
                      "Range: одиночная постановка с контролем попадания", "range", 1,
                      "bias", "10 минут перед сессией",
@@ -114,17 +121,20 @@ CATALOG: Dict[str, List[CatalogDrill]] = {
                      "VT Pasu Novice S5", "kovaaks", 1,
                      "correction", "3 подхода по 5 минут",
                      "Реактивный флик к цели: гаси перелёт доводкой, не проскакивай.",
-                     {"iron": 555, "bronze": 660, "silver": 745, "gold": 800}),
+                     {"iron": 555, "bronze": 660, "silver": 745, "gold": 800},
+                     kovaaks_scenario="VT Pasu Novice S5"),
         CatalogDrill("correction_t2_vt_pasu_intermediate",
                      "VT Pasu Intermediate S5", "kovaaks", 2,
                      "correction", "3 подхода по 5 минут",
                      "Тот же флик под возросшей амплитудой/темпом.",
-                     {"platinum": 770, "diamond": 850, "jade": 930, "master": 980}),
+                     {"platinum": 770, "diamond": 850, "jade": 930, "master": 980},
+                     kovaaks_scenario="VT Pasu Intermediate S5"),
         CatalogDrill("correction_t3_vt_pasu_advanced",
                      "VT Pasu Advanced S5", "kovaaks", 3,
                      "correction", "3 подхода по 5 минут",
                      "Флик близко к соревновательной механике.",
-                     {"grandmaster": 910, "nova": 1020, "astra": 1110, "celestial": 1240}),
+                     {"grandmaster": 910, "nova": 1020, "astra": 1110, "celestial": 1240},
+                     kovaaks_scenario="VT Pasu Advanced S5"),
         CatalogDrill("correction_ingame_t1_range_flicks",
                      "Range: флики на новые цели с доводкой", "range", 1,
                      "correction", "10 минут перед сессией",
@@ -149,29 +159,129 @@ def get_catalog_drill(drill_id: str) -> Optional[CatalogDrill]:
     return _CATALOG_BY_ID.get(drill_id)
 
 
-def _tier1_drills(training_platform: Optional[str]) -> List[CatalogDrill]:
-    """Tier-1 дриллы под платформу игрока (первый клип всегда tier 1).
+TIER_KEYS = {1: "novice", 2: "intermediate", 3: "advanced"}
+
+
+def _drill_for(metric: str, tier: int) -> Optional[CatalogDrill]:
+    return next((d for d in CATALOG[metric]
+                 if d.tier == tier and d.platform == "kovaaks"), None)
+
+
+def external_scenario_entry(metric: str, tier: int,
+                            external_benchmark: Optional[dict]
+                            ) -> Optional[dict]:
+    """Запись сценария (score/rank_maxes) из снапшота для метрики+тира.
+
+    Отсутствующий тир/сценарий -> None: нет тира = нет скоров (спека)."""
+    if not external_benchmark:
+        return None
+    drill = _drill_for(metric, tier)
+    if drill is None or drill.kovaaks_scenario is None:
+        return None
+    tier_block = (external_benchmark.get("tiers") or {}).get(TIER_KEYS[tier])
+    if not tier_block:
+        return None
+    return (tier_block.get("scenarios") or {}).get(drill.kovaaks_scenario)
+
+
+def tier_threshold(metric: str, tier: int,
+                   external_benchmark: Optional[dict]) -> Optional[float]:
+    """Верхний порог тира: max(rank_maxes) снапшота (порядок массива в
+    неофициальном API не задокументирован — max снимает предположение);
+    фолбэк — max(rank_thresholds) каталога. Коуч цитирует ЭТИ ЖЕ числа."""
+    entry = external_scenario_entry(metric, tier, external_benchmark)
+    maxes = (entry or {}).get("rank_maxes") or []
+    numeric = [m for m in maxes if isinstance(m, (int, float))]
+    if numeric:
+        return float(max(numeric))
+    drill = _drill_for(metric, tier)
+    if drill is not None and drill.rank_thresholds:
+        return float(max(drill.rank_thresholds.values()))
+    return None
+
+
+def _score(entry: Optional[dict]) -> float:
+    value = (entry or {}).get("score")
+    return float(value) if isinstance(value, (int, float)) else 0.0
+
+
+def _has_any_score(external_benchmark: Optional[dict]) -> bool:
+    if not external_benchmark:
+        return False
+    return any(
+        _score(sc) > 0
+        for tier in (external_benchmark.get("tiers") or {}).values()
+        for sc in (tier.get("scenarios") or {}).values())
+
+
+def external_tier_allowed(metric: str, tier: int,
+                          external_benchmark: Optional[dict]) -> bool:
+    """Правило 2 спеки — ТОЛЬКО для kovaaks-дриллов: тир T открыт, если
+    сценарий тира T уже играется (score > 0) ИЛИ сценарий T-1 достиг
+    верхнего порога СВОЕГО тира. Пороги — из tier_threshold (единый
+    источник с промптом)."""
+    if tier == 1:
+        return True
+    if _score(external_scenario_entry(metric, tier, external_benchmark)) > 0:
+        return True
+    prev_entry = external_scenario_entry(metric, tier - 1, external_benchmark)
+    if prev_entry is None:
+        return False                    # отсутствующий тир не открывает
+    threshold = tier_threshold(metric, tier - 1, external_benchmark)
+    return threshold is not None and _score(prev_entry) >= threshold
+
+
+def _menu_drills(training_platform: Optional[str],
+                 external_benchmark: Optional[dict]) -> List[CatalogDrill]:
+    """Меню дриллов: ingame/range — всегда tier 1 (перенос в игру меряет
+    движок, внешний сигнал их не открывает); kovaaks — по факту владения
+    (анкета ИЛИ живые скоры) и внешнему гейту тира.
+
+    Меню — это ДОПУСК, не рекомендация: приоритет между допущенными
+    дриллами — суждение коуча под гейтом валидатора (граница с Фазой 2C).
 
     None схлопывается в "ingame" СОЗНАТЕЛЬНО (не промптовым дефолтом): Valorant
     есть у каждого, чей клип мы анализируем; KovaaK's — нет. Рекомендация
     тренажёра без владения невыполнима; in-game владельцу KovaaK's — лишь
-    неоптимальна. KovaaK's появляется в меню только при явном "kovaaks"."""
-    include_kovaaks = training_platform == "kovaaks"
-    return [d for metric in CORE_METRICS for d in CATALOG[metric]
-            if d.tier == 1 and (include_kovaaks or d.platform != "kovaaks")]
+    неоптимальна. KovaaK's появляется в меню при явном "kovaaks" ИЛИ при
+    живых скорах в снапшоте (факт владения сильнее анкеты)."""
+    include_kovaaks = (training_platform == "kovaaks"
+                       or _has_any_score(external_benchmark))
+    menu: List[CatalogDrill] = []
+    for metric in CORE_METRICS:
+        for d in CATALOG[metric]:
+            if d.platform == "kovaaks":
+                if include_kovaaks and external_tier_allowed(
+                        metric, d.tier, external_benchmark):
+                    menu.append(d)
+            elif d.tier == 1:
+                menu.append(d)
+    return menu
 
 
-def menu_drill_ids(training_platform: Optional[str] = None) -> frozenset:
-    """Допустимые drill_id первого клипа; гейтится валидатором механически."""
-    return frozenset(cd.drill_id for cd in _tier1_drills(training_platform))
+def menu_drill_ids(training_platform: Optional[str] = None,
+                   external_benchmark: Optional[dict] = None) -> frozenset:
+    """Допустимые drill_id; гейтится валидатором механически."""
+    return frozenset(cd.drill_id
+                     for cd in _menu_drills(training_platform,
+                                            external_benchmark))
 
 
-def menu_for_prompt(training_platform: Optional[str] = None) -> str:
-    """Меню tier-1 дриллов платформы для промпта (первый клип всегда tier 1)."""
+def menu_for_prompt(training_platform: Optional[str] = None,
+                    external_benchmark: Optional[dict] = None) -> str:
+    """Меню для промпта; у kovaaks-дриллов — РОВНО числа гейта (скор/порог)."""
     lines = ["Меню дриллов (выбирай drill_id ТОЛЬКО отсюда):"]
-    for cd in _tier1_drills(training_platform):
-        lines.append(f"- {cd.drill_id} (метрика {cd.metric}, платформа"
-                     f" {cd.platform}): {cd.name}")
+    for cd in _menu_drills(training_platform, external_benchmark):
+        line = (f"- {cd.drill_id} (метрика {cd.metric}, платформа"
+                f" {cd.platform}): {cd.name}")
+        entry = external_scenario_entry(cd.metric, cd.tier, external_benchmark)
+        if cd.platform == "kovaaks" and entry is not None:
+            threshold = tier_threshold(cd.metric, cd.tier, external_benchmark)
+            score = _score(entry)
+            line += (f" — текущий скор игрока {score:g}, верхний порог тира"
+                     f" {threshold:g}" if threshold is not None
+                     else f" — текущий скор игрока {score:g}")
+        lines.append(line)
     return "\n".join(lines)
 
 

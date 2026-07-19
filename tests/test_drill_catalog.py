@@ -189,3 +189,93 @@ def test_finalize_skips_selection_without_finding():
     sels = [DrillSelection(priority=1, drill_id="bias_t1_vt_1w4ts_novice", rationale="b")]
     plan = finalize_plan(sels, findings)
     assert plan.drills == []
+
+
+# --- Внешний гейт тира (KovaaK's S5) -----------------------------------------
+from coach.drill_catalog import tier_threshold  # noqa: E402
+
+
+def _snap(tiers):
+    return {"source": "kovaaks_webapp_unofficial", "season": "S5",
+            "fetched_at": "x", "tiers_failed": [], "tiers": tiers}
+
+
+def _tier(scenarios):
+    return {"overall_rank": 0, "benchmark_progress": 0, "scenarios": scenarios}
+
+
+SNAP_PLAYS_T2 = _snap({
+    "novice": _tier({"VT ww5t Novice S5": {
+        "score": 900, "scenario_rank": 1, "rank_maxes": [990, 1090, 1190, 1290]}}),
+    "intermediate": _tier({"VT ww5t Intermediate S5": {
+        "score": 1350, "scenario_rank": 1,
+        "rank_maxes": [1310, 1400, 1490, 1560]}}),
+})
+
+SNAP_T1_MAXED = _snap({
+    "novice": _tier({"VT ww5t Novice S5": {
+        "score": 1290, "scenario_rank": 4,
+        "rank_maxes": [990, 1090, 1190, 1290]}}),
+})
+
+
+def test_no_block_is_todays_behaviour():
+    """Регресс-инвариант: без снапшота меню как сегодня."""
+    assert menu_drill_ids("kovaaks") == menu_drill_ids("kovaaks", None)
+    assert menu_drill_ids(None) == menu_drill_ids(None, None)
+
+
+def test_any_score_admits_kovaaks_regardless_of_platform():
+    ids = menu_drill_ids(None, SNAP_PLAYS_T2)
+    assert "consistency_t1_vt_ww5t_novice" in ids   # факт владения > анкета
+
+
+def test_tier2_opens_when_tier2_scenario_played():
+    ids = menu_drill_ids("kovaaks", SNAP_PLAYS_T2)
+    assert "consistency_t2_vt_ww5t_intermediate" in ids
+    # у bias скоров нет ни на одном тире -> его tier 2 закрыт
+    assert "bias_t2_vt_1w3ts_intermediate" not in ids
+
+
+def test_tier2_opens_when_tier1_hit_max_rank_maxes():
+    ids = menu_drill_ids("kovaaks", SNAP_T1_MAXED)
+    assert "consistency_t2_vt_ww5t_intermediate" in ids
+
+
+def test_missing_tier_opens_nothing():
+    # intermediate отсутствует в снапшоте -> tier 3 закрыт по обоим правилам
+    ids = menu_drill_ids("kovaaks", SNAP_T1_MAXED)
+    assert "consistency_t3_vt_ww5t_advanced" not in ids
+
+
+def test_gate_never_touches_ingame_range():
+    ids = menu_drill_ids("kovaaks", SNAP_PLAYS_T2)
+    # ingame/range выше tier 1 не открываются внешним сигналом
+    assert "consistency_ingame_t2_dm_tempo" not in ids
+    assert "bias_ingame_t2_range_strict" not in ids
+
+
+def test_every_metric_keeps_an_option():
+    from engine.metrics.criterion import CORE_METRICS
+    for snap in (None, SNAP_PLAYS_T2, SNAP_T1_MAXED):
+        for tp in (None, "ingame", "kovaaks"):
+            ids = menu_drill_ids(tp, snap)
+            for metric in CORE_METRICS:
+                assert any(
+                    get_catalog_drill(i).metric == metric for i in ids), (
+                    f"метрика {metric} осиротела при tp={tp}")
+
+
+def test_threshold_prefers_snapshot_max_over_catalog():
+    # снапшотный max(rank_maxes)=1290 совпадает с каталогом; проверим победу
+    # снапшота на изменённых порогах (внутрисезонная правка Voltaic)
+    snap = _snap({"novice": _tier({"VT ww5t Novice S5": {
+        "score": 1, "scenario_rank": 0, "rank_maxes": [10, 20, 9999]}})})
+    assert tier_threshold("consistency", 1, snap) == 9999
+    assert tier_threshold("consistency", 1, None) == 1290   # фолбэк: каталог
+
+
+def test_prompt_menu_quotes_gate_numbers():
+    text = menu_for_prompt("kovaaks", SNAP_PLAYS_T2)
+    assert "1350" in text        # скор, который ел гейт
+    assert "1560" in text        # max(rank_maxes) intermediate
