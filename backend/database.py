@@ -53,6 +53,7 @@ class User(SQLModel, table=True):
     discord_id: str = Field(index=True, unique=True)
     username: str
     avatar: Optional[str] = None
+    steam_id: Optional[str] = None     # SteamID64 (внешний ранк KovaaK's)
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         sa_column=Column(UTCDateTime()))
@@ -71,6 +72,7 @@ class AnalysisSession(SQLModel, table=True):
     coach_failed: bool = False
     coach_errors: Optional[str] = None      # JSON-список ошибок groundedness
     evidence_frames: Optional[str] = None   # JSON-список URL кадров-улик
+    external_benchmark: Optional[str] = None  # JSON-снапшот KovaaK's S5
     error: Optional[str] = None             # причина FAILED
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -141,6 +143,15 @@ class DatabaseManager:
     def get_user(self, user_id: UUID) -> Optional[User]:
         with Session(self.engine) as session:
             return session.get(User, user_id)
+
+    def update_user_steam_id(self, user_id: UUID,
+                             steam_id: Optional[str]) -> None:
+        with Session(self.engine) as session:
+            user = session.get(User, user_id)
+            if user is not None:
+                user.steam_id = steam_id
+                session.add(user)
+                session.commit()
 
     def count_sessions_since(self, owner_user_id: UUID,
                              since: datetime) -> int:

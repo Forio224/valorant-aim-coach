@@ -211,7 +211,8 @@ async def me(request: Request):
         return {"mode": auth_mode(), "user": None}
     return {"mode": auth_mode(),
             "user": {"id": str(user.id), "username": user.username,
-                     "avatar_url": _avatar_url(user)}}
+                     "avatar_url": _avatar_url(user),
+                     "steam_id": user.steam_id}}
 
 
 @router.post("/logout")

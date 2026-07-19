@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -100,6 +101,24 @@ ALLOWED_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "300"))
 MAX_UPLOAD_BYTES = int(MAX_UPLOAD_MB * 1024 * 1024)
 
+STEAM_ID_RE = re.compile(r"^\d{17}$")
+
+
+def _resolve_steam_id(form_value: str | None, user) -> str | None:
+    """Механическая валидация SteamID64 (мусор до сети не доходит) +
+    сохранение на аккаунт: один раз ввёл — дальше подставляется."""
+    steam_id = (form_value or "").strip() or None
+    if steam_id is not None and not STEAM_ID_RE.fullmatch(steam_id):
+        raise HTTPException(
+            status_code=422,
+            detail="SteamID64 — это 17 цифр (например 76561198000000001); "
+                   "найти свой: steamid.io или URL профиля Steam.")
+    if steam_id is None and user is not None:
+        return user.steam_id
+    if steam_id is not None and user is not None and user.steam_id != steam_id:
+        db.update_user_steam_id(user.id, steam_id)
+    return steam_id
+
 
 async def process_video_task(job: AnalysisJob) -> None:
     """Background-режим: разбор в executor процесса API (как раньше).
@@ -142,7 +161,8 @@ def _validate_upload_meta(filename: str | None, player_id: str,
 async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
                               video_ref: str, filename: str, player_id: str,
                               sens, edpi, agent, map_name,
-                              training_platform, user=None) -> dict:
+                              training_platform, user=None,
+                              steam_id=None) -> dict:
     # clip_id = stem исходного имени: повторная загрузка того же клипа
     # идемпотентно перезаписывает его в продольном профиле.
     clip_id = Path(filename).stem
@@ -153,7 +173,7 @@ async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
         session_id=str(session.id), video_path=video_ref,
         player_id=player_id, clip_id=clip_id, sens=sens, edpi=edpi,
         agent=agent, map_name=map_name, training_platform=training_platform,
-        owner_id=str(user.id) if user else None))
+        owner_id=str(user.id) if user else None, steam_id=steam_id))
     return {
         "session_id": str(session.id),
         "status": session.status,
@@ -190,12 +210,14 @@ async def start_analysis(request: Request,
                          edpi: float | None = Form(None),
                          agent: str | None = Form(None),
                          map_name: str | None = Form(None),
-                         training_platform: str | None = Form(None)):
+                         training_platform: str | None = Form(None),
+                         steam_id: str | None = Form(None)):
     """Шаг 2 presigned-флоу: клип уже в бакете — валидируем и запускаем."""
     enforce_upload_limit(request)
     user = auth.require_user(request)
     _enforce_daily_quota(user)
     player_id = _validate_upload_meta(filename, player_id, training_platform)
+    steam_id = _resolve_steam_id(steam_id, user)
     if not key.startswith(UPLOAD_PREFIX):
         raise HTTPException(status_code=400, detail="Некорректный ключ клипа")
     size = storage.video_size(key)
@@ -213,7 +235,8 @@ async def start_analysis(request: Request,
     return await _create_and_enqueue(
         background_tasks, video_ref=key, filename=filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
-        map_name=map_name, training_platform=training_platform, user=user)
+        map_name=map_name, training_platform=training_platform, user=user,
+        steam_id=steam_id)
 
 
 @app.post("/api/v1/analysis/upload")
@@ -225,13 +248,15 @@ async def upload_video(request: Request,
                        edpi: float | None = Form(None),
                        agent: str | None = Form(None),
                        map_name: str | None = Form(None),
-                       training_platform: str | None = Form(None)):
+                       training_platform: str | None = Form(None),
+                       steam_id: str | None = Form(None)):
     """Клип + player_id (людей не сливаем) + опциональный input-space."""
     enforce_upload_limit(request)
     user = auth.require_user(request)
     _enforce_daily_quota(user)
     player_id = _validate_upload_meta(file.filename, player_id,
                                      training_platform)
+    steam_id = _resolve_steam_id(steam_id, user)
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(
@@ -256,7 +281,8 @@ async def upload_video(request: Request,
     return await _create_and_enqueue(
         background_tasks, video_ref=video_path, filename=file.filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
-        map_name=map_name, training_platform=training_platform, user=user)
+        map_name=map_name, training_platform=training_platform, user=user,
+        steam_id=steam_id)
 
 
 @app.get("/healthz")

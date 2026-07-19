@@ -29,6 +29,7 @@ class AnalysisJob:
     map_name: Optional[str] = None
     training_platform: Optional[str] = None
     owner_id: Optional[str] = None     # аккаунт-владелец (Этап 2)
+    steam_id: Optional[str] = None     # SteamID64 -> внешний ранк KovaaK's
 
     def to_payload(self) -> dict:
         return {
@@ -42,6 +43,7 @@ class AnalysisJob:
             "map_name": self.map_name,
             "training_platform": self.training_platform,
             "owner_id": self.owner_id,
+            "steam_id": self.steam_id,
         }
 
     @classmethod
