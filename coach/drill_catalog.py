@@ -329,10 +329,14 @@ def build_criterion(metric: str, values: dict) -> SuccessCriterion:
                             target=target, baseline=baseline, text=text)
 
 
-def assemble_drill(selection: DrillSelection, finding: dict) -> Drill:
-    """Финальный Drill: имя/платформа/доза/тир из каталога, критерий из values."""
+def assemble_drill(selection: DrillSelection, finding: dict,
+                   external_benchmark: Optional[dict] = None) -> Drill:
+    """Финальный Drill: имя/платформа/доза/тир из каталога, критерий из values,
+    внешний скор/порог — те же числа, что ел гейт (единый источник)."""
     cd = _CATALOG_BY_ID[selection.drill_id]
     criterion = build_criterion(cd.metric, finding.get("values", {}))
+    entry = (external_scenario_entry(cd.metric, cd.tier, external_benchmark)
+             if cd.platform == "kovaaks" else None)
     return Drill(
         priority=selection.priority,
         drill_id=cd.drill_id,
@@ -344,6 +348,10 @@ def assemble_drill(selection: DrillSelection, finding: dict) -> Drill:
         rationale=selection.rationale,
         success_criterion=criterion.text,
         criterion=criterion,
+        external_score=_score(entry) if entry is not None else None,
+        external_threshold=(tier_threshold(cd.metric, cd.tier,
+                                           external_benchmark)
+                            if entry is not None else None),
     )
 
 
@@ -355,7 +363,8 @@ class FinalizedPlan:
 
 
 def finalize_plan(selections: Sequence[DrillSelection],
-                  findings: Sequence[dict]) -> FinalizedPlan:
+                  findings: Sequence[dict],
+                  external_benchmark: Optional[dict] = None) -> FinalizedPlan:
     """Сборка + правило честности: без единого диагноза план урезается до топ-2."""
     by_metric = {f["metric"]: f for f in findings}
     drills: List[Drill] = []
@@ -363,7 +372,8 @@ def finalize_plan(selections: Sequence[DrillSelection],
         cd = _CATALOG_BY_ID.get(sel.drill_id)
         if cd is None or cd.metric not in by_metric:
             continue                       # валидатор уже страхует; защитно
-        drills.append(assemble_drill(sel, by_metric[cd.metric]))
+        drills.append(assemble_drill(sel, by_metric[cd.metric],
+                                     external_benchmark))
     drills.sort(key=lambda d: d.priority)
     extra: List[str] = []
     has_diagnosis = any(f.get("confidence") == "diagnosis" for f in findings)

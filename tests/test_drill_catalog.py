@@ -279,3 +279,35 @@ def test_prompt_menu_quotes_gate_numbers():
     text = menu_for_prompt("kovaaks", SNAP_PLAYS_T2)
     assert "1350" in text        # скор, который ел гейт
     assert "1560" in text        # max(rank_maxes) intermediate
+
+
+# --- Внешние числа в финальном Drill -----------------------------------------
+
+_EXTERNAL_DRILL = {"source": "kovaaks_webapp_unofficial", "season": "S5",
+                   "fetched_at": "x", "tiers_failed": [],
+                   "tiers": {"novice": {"overall_rank": 1,
+                                        "benchmark_progress": 0.2,
+                                        "scenarios": {"VT Pasu Novice S5": {
+                                            "score": 812, "scenario_rank": 2,
+                                            "rank_maxes": [555, 660, 745, 800]}}}}}
+
+
+def test_assemble_drill_carries_external_numbers():
+    selection = DrillSelection(priority=1,
+                               drill_id="correction_t1_vt_pasu_novice",
+                               rationale="r")
+    finding = {"metric": "correction", "confidence": "diagnosis", "values": {}}
+    plan = finalize_plan([selection], [finding],
+                         external_benchmark=_EXTERNAL_DRILL)
+    drill = plan.drills[0]
+    assert drill.external_score == 812
+    assert drill.external_threshold == 800
+
+
+def test_assemble_drill_without_block_leaves_none():
+    selection = DrillSelection(priority=1,
+                               drill_id="correction_ingame_t1_range_flicks",
+                               rationale="r")
+    finding = {"metric": "correction", "confidence": "diagnosis", "values": {}}
+    drill = finalize_plan([selection], [finding]).drills[0]
+    assert drill.external_score is None and drill.external_threshold is None

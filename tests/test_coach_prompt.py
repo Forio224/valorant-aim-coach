@@ -72,3 +72,21 @@ def test_system_prompt_has_progress_rule():
     assert "progress_explained" in SYSTEM_PROMPT
     # запрет каузальности проговорён
     assert "сработал" in SYSTEM_PROMPT or "каузальн" in SYSTEM_PROMPT.lower()
+
+
+# --- Внешний ранк KovaaK's в промпте ------------------------------------------
+
+_EXTERNAL = {"source": "kovaaks_webapp_unofficial", "season": "S5",
+             "fetched_at": "x", "tiers_failed": [],
+             "tiers": {"novice": {"overall_rank": 1, "benchmark_progress": 0.2,
+                                  "scenarios": {"VT Pasu Novice S5": {
+                                      "score": 812, "scenario_rank": 2,
+                                      "rank_maxes": [555, 660, 745, 800]}}}}}
+
+
+def test_user_text_menu_uses_external_block():
+    report = {"clip": {"training_platform": None},
+              "external_benchmark": _EXTERNAL}
+    text = build_user_text(report)
+    assert "correction_t1_vt_pasu_novice" in text  # kovaaks по факту скоров
+    assert "812" in text                            # числа гейта в меню

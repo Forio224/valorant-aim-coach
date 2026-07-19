@@ -120,6 +120,30 @@ def _check_cm_numbers(text: str, pool: List[float], where: str) -> List[str]:
     return errors
 
 
+# 3-5 цифр НЕ внутри слова/десятичной дроби: лукбехайнд отсекает дробную/
+# тысячную часть («1.349», «1,349»), лукахед блокирует продолжение цифрой
+# или десятичный хвост («999.5»), но пропускает завершающую пунктуацию
+# («999,» «800.») — иначе выдуманный скор перед запятой утёк бы.
+_BARE_NUMBER_RE = re.compile(r"(?<![\w.,+\-–—:])(\d{3,5})(?![\w%])(?![.,]\d)")
+
+
+def _check_bare_numbers(text: str, pool: List[float], frames: set,
+                        where: str) -> List[str]:
+    """Голые числа 3-5 цифр (скоры KovaaK's пишутся без единицы) обязаны
+    существовать в отчёте. Проверка включается ТОЛЬКО при наличии блока
+    external_benchmark — без него поведение прежнее (регресс-инвариант).
+    Номера кадров легальны (frames)."""
+    errors = []
+    for match in _BARE_NUMBER_RE.finditer(text or ""):
+        value = float(match.group(1))
+        if int(value) in frames:
+            continue
+        if not any(abs(value - known) <= 0.5 for known in pool):
+            errors.append(f"число {match.group(1)} ({where}) не найдено в "
+                          f"evidence-JSON — внешние скоры тоже нельзя выдумывать")
+    return errors
+
+
 def _known_frames(evidence: dict) -> set:
     """Все номера кадров, явно присутствующие в evidence-JSON."""
     frames = set()
@@ -174,6 +198,19 @@ def _known_numbers(evidence: dict) -> List[float]:
     for finding in evidence.get("findings", []):
         pool.extend(_cm_numbers_in_text(finding.get("statement") or ""))
         pool.extend(_cm_numbers_in_text(finding.get("caveat") or ""))
+    # Внешние скоры KovaaK's (S5): числа чужого измерения, которые коуч
+    # имеет право цитировать — заземляем тем же множеством, что HU.
+    external = evidence.get("external_benchmark") or {}
+    for tier in (external.get("tiers") or {}).values():
+        for key in ("overall_rank", "benchmark_progress"):
+            if _is_number(tier.get(key)):
+                pool.append(float(tier[key]))
+        for sc in (tier.get("scenarios") or {}).values():
+            for key in ("score", "scenario_rank"):
+                if _is_number(sc.get(key)):
+                    pool.append(float(sc[key]))
+            pool.extend(float(m) for m in (sc.get("rank_maxes") or [])
+                        if _is_number(m))
     return pool
 
 
@@ -199,6 +236,13 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
     errors: List[str] = []
     frames_known = _known_frames(evidence)
     numbers_known = _known_numbers(evidence)
+    has_external = "external_benchmark" in evidence
+
+    def _bare(text: str, where: str) -> List[str]:
+        if not has_external:
+            return []
+        return _check_bare_numbers(text, numbers_known, frames_known, where)
+
     findings_by_metric = {
         f["metric"]: f for f in evidence.get("findings", [])
     }
@@ -220,6 +264,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                 )
         errors.extend(_check_hu_numbers(fe.explanation, numbers_known, where))
         errors.extend(_check_cm_numbers(fe.explanation, numbers_known, where))
+        errors.extend(_bare(fe.explanation, where))
         errors.extend(_check_causal(fe.explanation, where))
         if fe.confidence in _HEDGED_CONFIDENCES:
             stopword = _ASSERTIVE_STOPWORDS_RE.search(fe.explanation)
@@ -231,11 +276,14 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
 
     errors.extend(_check_hu_numbers(coach.summary, numbers_known, "summary"))
     errors.extend(_check_cm_numbers(coach.summary, numbers_known, "summary"))
+    errors.extend(_bare(coach.summary, "summary"))
     errors.extend(_check_causal(coach.summary, "summary"))
     for caveat in coach.caveats:
         errors.extend(_check_causal(caveat, "caveats"))
 
-    menu_ids = menu_drill_ids((evidence.get("clip") or {}).get("training_platform"))
+    menu_ids = menu_drill_ids(
+        (evidence.get("clip") or {}).get("training_platform"),
+        evidence.get("external_benchmark"))
     for drill in coach.drills:
         where = f"дрилл '{drill.drill_id}'"
         cd = get_catalog_drill(drill.drill_id)
@@ -247,11 +295,12 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
             )
         elif drill.drill_id not in menu_ids:
             errors.append(
-                f"{where} не из меню первого клипа (tier {cd.tier}); "
-                f"первый клип — только tier-1 дриллы твоей платформы"
+                f"{where} не из допустимого меню (tier {cd.tier} закрыт "
+                f"гейтом или платформа не твоя)"
             )
         errors.extend(_check_hu_numbers(drill.rationale, numbers_known, where))
         errors.extend(_check_cm_numbers(drill.rationale, numbers_known, where))
+        errors.extend(_bare(drill.rationale, where))
         errors.extend(_check_causal(drill.rationale, where))
 
     # Гейт монотонности (Фаза 4): порядок дриллов по priority не должен ставить
@@ -290,6 +339,7 @@ def validate_coach_report(coach: CoachReport, evidence: dict) -> List[str]:
                           f"у движка '{rec['confidence']}'")
         errors.extend(_check_hu_numbers(pe.explanation, numbers_known, where))
         errors.extend(_check_cm_numbers(pe.explanation, numbers_known, where))
+        errors.extend(_bare(pe.explanation, where))
         errors.extend(_check_causal(pe.explanation, where))
         if pe.confidence in _HEDGED_CONFIDENCES:
             stopword = _ASSERTIVE_STOPWORDS_RE.search(pe.explanation)

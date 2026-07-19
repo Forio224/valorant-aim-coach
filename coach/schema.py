@@ -71,6 +71,8 @@ class Drill(BaseModel):
     rationale: str
     success_criterion: str
     criterion: SuccessCriterion
+    external_score: Optional[float] = None       # скор игрока в KovaaK's
+    external_threshold: Optional[float] = None   # верхний порог тира (гейт)
 
 
 class CoachReport(BaseModel):

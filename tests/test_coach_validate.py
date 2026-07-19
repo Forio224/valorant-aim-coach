@@ -288,7 +288,7 @@ def test_kovaaks_drill_under_ingame_menu_is_error():
     del ev["clip"]["training_platform"]
     errors = validate_coach_report(
         _coach(drill_id="consistency_t1_vt_ww5t_novice"), ev)
-    assert any("не из меню" in e for e in errors)
+    assert any("не из допустимого меню" in e for e in errors)
 
 
 def test_kovaaks_drill_with_explicit_kovaaks_platform_passes():
@@ -576,3 +576,46 @@ def test_drill_rationale_describes_purpose_not_blocked():
         _evidence(),
     )
     assert not any("каузальн" in e.lower() for e in errors)
+
+
+# --- Заземление внешних скоров KovaaK's --------------------------------------
+
+EXTERNAL = {"source": "kovaaks_webapp_unofficial", "season": "S5",
+            "fetched_at": "x", "tiers_failed": [],
+            "tiers": {"novice": {"overall_rank": 1, "benchmark_progress": 0.2,
+                                 "scenarios": {"VT Pasu Novice S5": {
+                                     "score": 812, "scenario_rank": 2,
+                                     "rank_maxes": [555, 660, 745, 800]}}}}}
+
+
+def test_external_score_in_text_passes():
+    evidence = _evidence()
+    evidence["external_benchmark"] = EXTERNAL
+    coach = _coach().model_copy(update={
+        "summary": "Твой Pasu — 812 при верхнем пороге 800."})
+    assert validate_coach_report(coach, evidence) == []
+
+
+def test_invented_external_score_is_caught():
+    evidence = _evidence()
+    evidence["external_benchmark"] = EXTERNAL
+    coach = _coach().model_copy(update={"summary": "Твой Pasu — 999, почти топ."})
+    errors = validate_coach_report(coach, evidence)
+    assert any("999" in e for e in errors)
+
+
+def test_reports_without_block_skip_bare_number_check():
+    """Регресс-инвариант: без блока новые проверки не включаются."""
+    evidence = _evidence()                  # блока нет
+    coach = _coach().model_copy(update={
+        "summary": "Сыграно 999 матчей (число не из отчёта)."})
+    # bare-числа без единицы РАНЬШЕ не проверялись — поведение сохранено
+    assert validate_coach_report(coach, evidence) == []
+
+
+def test_menu_gate_respects_external_block():
+    evidence = _evidence()
+    evidence["clip"]["training_platform"] = None      # анкеты нет
+    evidence["external_benchmark"] = EXTERNAL          # но скоры живые
+    coach = _coach(drill_id="consistency_t1_vt_ww5t_novice")
+    assert validate_coach_report(coach, evidence) == []

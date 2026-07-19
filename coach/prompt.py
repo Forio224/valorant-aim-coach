@@ -61,6 +61,10 @@ finding), explanation. В explanation опиши направление чело
 адхеренс и конфаундеры неизвестны, ты видишь только числа. Записи с \
 direction="insufficient" в progress_explained НЕ добавляй — при желании \
 упомяни «рано судить» в caveats без утверждения направления.
+10. Если в evidence-JSON есть блок external_benchmark (скоры KovaaK's) — \
+можешь цитировать скоры и пороги ИЗ НЕГО (и из меню дриллов) дословно; \
+любые другие внешние числа запрещены. Блок может отсутствовать или быть \
+неполным (tiers_failed) — тогда просто не упоминай внешний ранг.
 
 ТРЕНИРОВОЧНЫЙ ПЛАН: выбери 2–4 дрилла из меню каталога (по одному на \
 проблему). Для каждого укажи drill_id, priority (1 — самое важное) и \
@@ -90,7 +94,9 @@ def build_user_text(
             "врага, стрелка — оффсет. Используй их только как контекст "
             "ситуации."
         )
-    parts.append(menu_for_prompt((report.get("clip") or {}).get("training_platform")))
+    parts.append(menu_for_prompt(
+        (report.get("clip") or {}).get("training_platform"),
+        report.get("external_benchmark")))
     parts.append(
         "Составь коучинг-отчёт CoachReport по правилам системного промпта."
     )

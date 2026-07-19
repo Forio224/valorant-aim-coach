@@ -129,7 +129,9 @@ def _run_coach(coach_client, report: dict, frame_paths: Sequence,
     if result.coach_report is None:
         return None, result.errors, result.attempts, result.coach_failed
     coach_dict = result.coach_report.model_dump()
-    plan = finalize_plan(result.coach_report.drills, report.get("findings", []))
+    plan = finalize_plan(result.coach_report.drills,
+                         report.get("findings", []),
+                         report.get("external_benchmark"))
     coach_dict["drills"] = [d.model_dump() for d in plan.drills]
     coach_dict["caveats"] = coach_dict["caveats"] + plan.extra_caveats
     return coach_dict, result.errors, result.attempts, result.coach_failed
