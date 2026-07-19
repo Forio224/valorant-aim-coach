@@ -21,7 +21,9 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.database import DatabaseManager
 from backend.services.analysis_pipeline import run_pipeline
+from backend.services.analysis_task import AnalysisJob, run_analysis_session
 from backend.services.history_provider import make_history_provider
+from backend.services.job_queue import create_job_queue
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -55,42 +57,20 @@ MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "300"))
 MAX_UPLOAD_BYTES = int(MAX_UPLOAD_MB * 1024 * 1024)
 
 
-async def process_video_task(session_id: str, video_path: str,
-                             player_id: str, clip_id: str,
-                             sens: float | None, edpi: float | None,
-                             agent: str | None, map_name: str | None,
-                             training_platform: str | None) -> None:
-    """Фон: пайплайн двигает статус сессии, итог пишется JSON-колонками."""
-    sid = uuid.UUID(session_id)
+async def process_video_task(job: AnalysisJob) -> None:
+    """Background-режим: разбор в executor процесса API (как раньше).
 
-    def on_status(status: str) -> None:
-        db.update_session(sid, status=status)
+    run_pipeline берётся из глобали модуля на момент вызова — тесты
+    подменяют main.run_pipeline фейком.
+    """
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: run_analysis_session(
+        db, job, evidence_dir=EVIDENCE_DIR, pipeline=run_pipeline,
+        history_provider=make_history_provider(db)))
 
-    try:
-        loop = asyncio.get_event_loop()
-        session_evidence_dir = os.path.join(EVIDENCE_DIR, session_id)
-        result = await loop.run_in_executor(None, lambda: run_pipeline(
-            video_path, player_id, clip_id=clip_id, sens=sens, edpi=edpi,
-            agent=agent, map_name=map_name, training_platform=training_platform,
-            evidence_dir=session_evidence_dir, on_status=on_status,
-            history_provider=make_history_provider(db)))
 
-        frame_urls = [f"/evidence/{session_id}/{Path(p).name}"
-                      for p in result.evidence_frames]
-        db.update_session(
-            sid,
-            status="COMPLETED",
-            evidence_report=json.dumps(result.evidence_report,
-                                       ensure_ascii=False),
-            coach_report=(json.dumps(result.coach_report, ensure_ascii=False)
-                          if result.coach_report is not None else None),
-            coach_failed=result.coach_failed,
-            coach_errors=json.dumps(result.coach_errors, ensure_ascii=False),
-            evidence_frames=json.dumps(frame_urls),
-        )
-    except Exception as exc:                       # noqa: BLE001 — в БД и лог
-        logger.exception("пайплайн упал: session %s", session_id)
-        db.update_session(sid, status="FAILED", error=str(exc))
+# QUEUE_BACKEND=background (дефолт) | arq — см. services/job_queue.py.
+job_queue = create_job_queue(process_video_task)
 
 
 @app.post("/api/v1/analysis/upload")
@@ -134,9 +114,10 @@ async def upload_video(background_tasks: BackgroundTasks,
 
     session = db.create_session(video_path, player_id=player_id,
                                 clip_id=clip_id)
-    background_tasks.add_task(process_video_task, str(session.id), video_path,
-                              player_id, clip_id, sens, edpi, agent, map_name,
-                              training_platform)
+    await job_queue.enqueue(background_tasks, AnalysisJob(
+        session_id=str(session.id), video_path=video_path,
+        player_id=player_id, clip_id=clip_id, sens=sens, edpi=edpi,
+        agent=agent, map_name=map_name, training_platform=training_platform))
     return {
         "session_id": str(session.id),
         "status": session.status,

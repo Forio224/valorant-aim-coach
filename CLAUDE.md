@@ -72,6 +72,14 @@ GET /api/v1/analysis/{session_id}
 - `backend/database.py` — SQLModel `AnalysisSession` с JSON-колонками
 - `backend/services/analysis_pipeline.py` — YOLO → движок → коуч;
   детектор и коуч-клиент инжектируются (тесты без torch/API)
+- `backend/services/analysis_task.py` — исполнение разбора как задача
+  (статусы/персист/FAILED), общая для обоих бэкендов очереди
+- `backend/services/job_queue.py` — очередь: `QUEUE_BACKEND=background`
+  (в процессе API, дефолт dev) | `arq` (Redis, переживает рестарт;
+  `_job_id=session_id` — дедуп)
+- `backend/worker.py` — arq-воркер:
+  `python -m arq backend.worker.WorkerSettings` (нужен REDIS_URL);
+  WORKER_MAX_JOBS=1 — GPU обрабатывает один клип за раз
 
 ### Engine (Phase A, `engine/` + `aim_metrics.py`)
 
