@@ -15,10 +15,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import (BackgroundTasks, FastAPI, File, Form, HTTPException,
-                     UploadFile)
+                     Request, UploadFile)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from backend import auth
 from backend.database import DatabaseManager
 from backend.services.analysis_pipeline import run_pipeline
 from backend.services.analysis_task import AnalysisJob, run_analysis_session
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 init_sentry("api")
 
 app = FastAPI(title="Valorant AI Aim Coach", version="2.0.0")
+app.include_router(auth.router)
 
 # CORS: только фронт; дополнительные origin — через env (через запятую).
 ALLOWED_ORIGINS = [
@@ -70,10 +72,14 @@ async def process_video_task(job: AnalysisJob) -> None:
     run_pipeline берётся из глобали модуля на момент вызова — тесты
     подменяют main.run_pipeline фейком.
     """
+    import uuid as _uuid
+
+    owner = _uuid.UUID(job.owner_id) if job.owner_id else None
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, lambda: run_analysis_session(
         db, job, evidence_dir=EVIDENCE_DIR, pipeline=run_pipeline,
-        history_provider=make_history_provider(db), storage=storage))
+        history_provider=make_history_provider(db, owner_user_id=owner),
+        storage=storage))
 
 
 # QUEUE_BACKEND=background (дефолт) | arq — см. services/job_queue.py.
@@ -101,16 +107,18 @@ def _validate_upload_meta(filename: str | None, player_id: str,
 async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
                               video_ref: str, filename: str, player_id: str,
                               sens, edpi, agent, map_name,
-                              training_platform) -> dict:
+                              training_platform, user=None) -> dict:
     # clip_id = stem исходного имени: повторная загрузка того же клипа
     # идемпотентно перезаписывает его в продольном профиле.
     clip_id = Path(filename).stem
     session = db.create_session(video_ref, player_id=player_id,
-                                clip_id=clip_id)
+                                clip_id=clip_id,
+                                owner_user_id=user.id if user else None)
     await job_queue.enqueue(background_tasks, AnalysisJob(
         session_id=str(session.id), video_path=video_ref,
         player_id=player_id, clip_id=clip_id, sens=sens, edpi=edpi,
-        agent=agent, map_name=map_name, training_platform=training_platform))
+        agent=agent, map_name=map_name, training_platform=training_platform,
+        owner_id=str(user.id) if user else None))
     return {
         "session_id": str(session.id),
         "status": session.status,
@@ -119,7 +127,8 @@ async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
 
 
 @app.post("/api/v1/analysis/uploads")
-async def create_upload(filename: str = Form(...)):
+async def create_upload(request: Request, filename: str = Form(...)):
+    auth.require_user(request)
     """Шаг 1 presigned-флоу: куда грузить клип.
 
     local: {"mode": "direct"} — фронт шлёт файл в /upload, как раньше.
@@ -136,7 +145,8 @@ async def create_upload(filename: str = Form(...)):
 
 
 @app.post("/api/v1/analysis/start")
-async def start_analysis(background_tasks: BackgroundTasks,
+async def start_analysis(request: Request,
+                         background_tasks: BackgroundTasks,
                          key: str = Form(...),
                          filename: str = Form(...),
                          player_id: str = Form(...),
@@ -146,6 +156,7 @@ async def start_analysis(background_tasks: BackgroundTasks,
                          map_name: str | None = Form(None),
                          training_platform: str | None = Form(None)):
     """Шаг 2 presigned-флоу: клип уже в бакете — валидируем и запускаем."""
+    user = auth.require_user(request)
     player_id = _validate_upload_meta(filename, player_id, training_platform)
     if not key.startswith(UPLOAD_PREFIX):
         raise HTTPException(status_code=400, detail="Некорректный ключ клипа")
@@ -164,11 +175,12 @@ async def start_analysis(background_tasks: BackgroundTasks,
     return await _create_and_enqueue(
         background_tasks, video_ref=key, filename=filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
-        map_name=map_name, training_platform=training_platform)
+        map_name=map_name, training_platform=training_platform, user=user)
 
 
 @app.post("/api/v1/analysis/upload")
-async def upload_video(background_tasks: BackgroundTasks,
+async def upload_video(request: Request,
+                       background_tasks: BackgroundTasks,
                        file: UploadFile = File(...),
                        player_id: str = Form(...),
                        sens: float | None = Form(None),
@@ -177,6 +189,7 @@ async def upload_video(background_tasks: BackgroundTasks,
                        map_name: str | None = Form(None),
                        training_platform: str | None = Form(None)):
     """Клип + player_id (людей не сливаем) + опциональный input-space."""
+    user = auth.require_user(request)
     player_id = _validate_upload_meta(file.filename, player_id,
                                      training_platform)
     content = await file.read()
@@ -196,7 +209,7 @@ async def upload_video(background_tasks: BackgroundTasks,
     return await _create_and_enqueue(
         background_tasks, video_ref=video_path, filename=file.filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
-        map_name=map_name, training_platform=training_platform)
+        map_name=map_name, training_platform=training_platform, user=user)
 
 
 @app.get("/healthz")
@@ -221,9 +234,38 @@ async def healthz():
     return body
 
 
+@app.post("/api/v1/analysis/{session_id}/share")
+async def share_analysis(session_id: str, request: Request):
+    """Владелец получает стабильный share-токен для ссылки на отчёт."""
+    import secrets as _secrets
+
+    user = auth.current_user(request)
+    try:
+        session = db.get_session(uuid.UUID(session_id))
+    except ValueError:
+        raise HTTPException(status_code=400,
+                            detail="Invalid session ID format")
+    # 404 и для чужих: существование сессии не подтверждаем
+    if (session is None or session.owner_user_id is None or user is None
+            or session.owner_user_id != user.id):
+        raise HTTPException(status_code=404,
+                            detail="Analysis session not found")
+    if not session.share_token:
+        session = db.update_session(
+            session.id, share_token=_secrets.token_urlsafe(16))
+    return {"share_token": session.share_token}
+
+
 @app.get("/api/v1/analysis/{session_id}")
-async def get_analysis(session_id: str):
-    """Статус пайплайна + полный результат, когда COMPLETED."""
+async def get_analysis(session_id: str, request: Request,
+                       share: str | None = None):
+    """Статус пайплайна + полный результат, когда COMPLETED.
+
+    Сессии с владельцем видит только владелец или гость с share-токеном;
+    анонимные сессии (dev/легаси) остаются открытыми.
+    """
+    import secrets as _secrets
+
     try:
         session = db.get_session(uuid.UUID(session_id))
     except ValueError:
@@ -233,10 +275,22 @@ async def get_analysis(session_id: str):
         raise HTTPException(status_code=404,
                             detail="Analysis session not found")
 
+    user = auth.current_user(request)
+    is_owner = (session.owner_user_id is not None and user is not None
+                and session.owner_user_id == user.id)
+    if session.owner_user_id is not None and not is_owner:
+        shared = (share is not None and session.share_token is not None
+                  and _secrets.compare_digest(share, session.share_token))
+        if not shared:
+            raise HTTPException(status_code=404,
+                                detail="Analysis session not found")
+
     def _loads(text):
         return json.loads(text) if text else None
 
     return {
+        "is_owner": is_owner,
+        "share_token": session.share_token if is_owner else None,
         "id": str(session.id),
         "status": session.status,
         "player_id": session.player_id,

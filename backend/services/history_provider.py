@@ -61,10 +61,15 @@ def build_clip_snapshots(sessions: Sequence[dict],
     return snapshots
 
 
-def make_history_provider(db) -> Callable[[str, str], List[dict]]:
-    """Дефолтный провайдер: читает AnalysisSession через DatabaseManager."""
+def make_history_provider(db, owner_user_id=None) -> Callable[[str, str],
+                                                              List[dict]]:
+    """Дефолтный провайдер: читает AnalysisSession через DatabaseManager.
+
+    owner_user_id разрезает историю по аккаунту (Этап 2): одинаковый
+    player_id у разных аккаунтов — разные люди."""
     def provider(player_id: str, exclude_clip_id: str) -> List[dict]:
-        rows = db.list_sessions_for_player(player_id)
+        rows = db.list_sessions_for_player(player_id,
+                                           owner_user_id=owner_user_id)
         sessions = [{
             "clip_id": r.clip_id, "created_at": r.created_at.isoformat(),
             "evidence_report": (json.loads(r.evidence_report)

@@ -28,6 +28,7 @@ class AnalysisJob:
     agent: Optional[str] = None
     map_name: Optional[str] = None
     training_platform: Optional[str] = None
+    owner_id: Optional[str] = None     # аккаунт-владелец (Этап 2)
 
     def to_payload(self) -> dict:
         return {
@@ -40,6 +41,7 @@ class AnalysisJob:
             "agent": self.agent,
             "map_name": self.map_name,
             "training_platform": self.training_platform,
+            "owner_id": self.owner_id,
         }
 
     @classmethod
@@ -77,6 +79,19 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
         logger.info("session %s %s за %.1fs %s", job.session_id, outcome,
                     time.monotonic() - started, stages)
 
+    # Продольный профиль в разрезе аккаунта: «friend» у двух аккаунтов —
+    # разные люди. Анонимный режим (dev) живёт в корне PROFILE_DIR.
+    pipeline_kwargs: dict = {}
+    if job.owner_id:
+        import dataclasses
+
+        from backend.services.analysis_pipeline import PipelineConfig
+
+        base_cfg = PipelineConfig.from_env()
+        pipeline_kwargs["config"] = dataclasses.replace(
+            base_cfg,
+            profile_dir=str(Path(base_cfg.profile_dir) / job.owner_id))
+
     try:
         session_evidence_dir = str(Path(evidence_dir) / job.session_id)
         with storage.fetch_video(job.video_path) as local_video:
@@ -86,7 +101,7 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
                 map_name=job.map_name,
                 training_platform=job.training_platform,
                 evidence_dir=session_evidence_dir, on_status=on_status,
-                history_provider=history_provider)
+                history_provider=history_provider, **pipeline_kwargs)
 
         frame_urls = storage.publish_evidence(job.session_id,
                                               result.evidence_frames)

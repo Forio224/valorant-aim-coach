@@ -30,15 +30,24 @@ KEEP_RESULT_S = 24 * 3600
 
 async def analyze_clip(ctx: dict, payload: dict) -> None:
     """Разбор одной сессии; тяжёлый sync-пайплайн — в executor."""
+    import uuid
+
+    from backend.services.history_provider import make_history_provider
+
     job = AnalysisJob.from_payload(payload)
     logger.info("analyze_clip: session %s clip %s", job.session_id,
                 job.clip_id)
+    # История — в разрезе владельца джобы (ctx-провайдер годится для тестов)
+    owner = uuid.UUID(job.owner_id) if job.owner_id else None
+    history_provider = (ctx.get("history_provider")
+                        or make_history_provider(ctx["db"],
+                                                 owner_user_id=owner))
     loop = asyncio.get_event_loop()
     await loop.run_in_executor(None, partial(
         run_analysis_session, ctx["db"], job,
         evidence_dir=ctx["evidence_dir"],
         pipeline=ctx["pipeline"],
-        history_provider=ctx["history_provider"],
+        history_provider=history_provider,
         storage=ctx.get("storage")))
 
 

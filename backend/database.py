@@ -47,11 +47,24 @@ class UTCDateTime(TypeDecorator):
         return value
 
 
+class User(SQLModel, table=True):
+    """Аккаунт (Discord OAuth); паролей нет и не будет."""
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    discord_id: str = Field(index=True, unique=True)
+    username: str
+    avatar: Optional[str] = None
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime()))
+
+
 class AnalysisSession(SQLModel, table=True):
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     video_path: str
     player_id: str                     # людей не сливаем — id обязателен
     clip_id: str                       # stem исходного файла (идемпотентность профиля)
+    owner_user_id: Optional[UUID] = Field(default=None, index=True)
+    share_token: Optional[str] = None  # явный шеринг отчёта (Этап 2)
     status: str = "PENDING"
     evidence_report: Optional[str] = None   # JSON движка (schema 1.1)
     coach_report: Optional[str] = None      # JSON CoachReport (None при провале)
@@ -78,10 +91,12 @@ class DatabaseManager:
         SQLModel.metadata.create_all(self.engine)
 
     def create_session(self, video_path: str, *, player_id: str,
-                       clip_id: str) -> AnalysisSession:
+                       clip_id: str,
+                       owner_user_id: Optional[UUID] = None) -> AnalysisSession:
         with Session(self.engine) as session:
             analysis_session = AnalysisSession(
-                video_path=video_path, player_id=player_id, clip_id=clip_id)
+                video_path=video_path, player_id=player_id, clip_id=clip_id,
+                owner_user_id=owner_user_id)
             session.add(analysis_session)
             session.commit()
             session.refresh(analysis_session)
@@ -106,11 +121,39 @@ class DatabaseManager:
         with Session(self.engine) as session:
             return session.get(AnalysisSession, session_id)
 
-    def list_sessions_for_player(self, player_id: str):
-        # Порядок отдаёт SQL (2C): история прогресса не должна зависеть от
-        # порядка вставки/прихотей планировщика БД.
+    def get_or_create_discord_user(self, *, discord_id: str, username: str,
+                                   avatar: Optional[str]) -> User:
+        """Upsert по discord_id: повторный логин обновляет ник/аватар."""
         with Session(self.engine) as session:
-            return list(session.exec(
-                select(AnalysisSession)
-                .where(AnalysisSession.player_id == player_id)
-                .order_by(AnalysisSession.created_at)).all())
+            user = session.exec(
+                select(User).where(User.discord_id == discord_id)).first()
+            if user is None:
+                user = User(discord_id=discord_id, username=username,
+                            avatar=avatar)
+            else:
+                user.username = username
+                user.avatar = avatar
+            session.add(user)
+            session.commit()
+            session.refresh(user)
+            return user
+
+    def get_user(self, user_id: UUID) -> Optional[User]:
+        with Session(self.engine) as session:
+            return session.get(User, user_id)
+
+    def list_sessions_for_player(self, player_id: str,
+                                 owner_user_id: Optional[UUID] = None):
+        # Порядок отдаёт SQL (2C): история прогресса не должна зависеть от
+        # порядка вставки/прихотей планировщика БД. Разрез по владельцу:
+        # «friend» у двух аккаунтов — разные люди (Этап 2).
+        with Session(self.engine) as session:
+            query = (select(AnalysisSession)
+                     .where(AnalysisSession.player_id == player_id)
+                     .order_by(AnalysisSession.created_at))
+            if owner_user_id is None:
+                query = query.where(AnalysisSession.owner_user_id.is_(None))
+            else:
+                query = query.where(
+                    AnalysisSession.owner_user_id == owner_user_id)
+            return list(session.exec(query).all())
