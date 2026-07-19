@@ -34,7 +34,7 @@ from engine.profile_store import (
     PlayerProfile,
 )
 
-SCHEMA_VERSION = "1.3"
+SCHEMA_VERSION = "1.4"
 MIN_FLICKS_FOR_DIAGNOSIS = 6
 
 # severity_ratio (Фаза 4): отклонение находки от ЕЁ СОБСТВЕННОГО порога —
@@ -322,7 +322,9 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
                  duel_hu: float = DEFAULT_DUEL_HU,
                  profile: Optional[PlayerProfile] = None,
                  drill_history: Sequence = (),
-                 attribution: Optional[AttributionResult] = None) -> dict:
+                 attribution: Optional[AttributionResult] = None,
+                 external_benchmark: Optional[dict] = None,
+                 external_unavailable_reason: Optional[str] = None) -> dict:
     """The full evidence-tagged portrait of one clip (+ longitudinal profile).
 
     `attribution` (Фаза 3): когда `samples` пришли из `attribute_targets`,
@@ -352,6 +354,14 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
         else [])
     report["drill_progress"] = compute_drill_progress(report["findings"],
                                                       list(drill_history))
+    # Внешний ранк KovaaK's (schema 1.4): чужие измерения, не наши — движок
+    # блок не строит и не пересчитывает, только переносит. Контракт на
+    # отсутствие: у отчёта ВСЕГДА есть ровно одно из двух полей.
+    if external_benchmark is not None:
+        report["external_benchmark"] = external_benchmark
+    else:
+        report["external_unavailable_reason"] = (
+            external_unavailable_reason or "no_steam_id")
     if profile is not None:
         report["profile"] = asdict(profile)
     return report

@@ -306,3 +306,37 @@ def test_report_on_real_clip_is_fully_evidenced():
         for item in finding["evidence"]:
             frame = item.get("frame", item.get("frame_start"))
             assert 0 <= frame <= 700
+
+
+# --- Внешний ранк KovaaK's (schema 1.4) --------------------------------------
+
+EXTERNAL_SNAPSHOT = {
+    "source": "kovaaks_webapp_unofficial", "fetched_at": "2026-07-19T00:00:00+00:00",
+    "season": "S5", "tiers_failed": [],
+    "tiers": {"novice": {"overall_rank": 2, "benchmark_progress": 0.4,
+                         "scenarios": {"VT ww5t Novice S5": {
+                             "score": 1200, "scenario_rank": 2,
+                             "rank_maxes": [990, 1090, 1190, 1290]}}}},
+}
+
+
+def test_report_carries_external_benchmark_block():
+    ctx = make_ctx()
+    report = build_report(ctx, [], [], external_benchmark=EXTERNAL_SNAPSHOT)
+    assert report["schema_version"] == "1.4"
+    assert report["external_benchmark"] == EXTERNAL_SNAPSHOT
+    assert "external_unavailable_reason" not in report
+
+
+def test_report_without_block_names_reason():
+    ctx = make_ctx()
+    report = build_report(ctx, [], [],
+                          external_unavailable_reason="api_error")
+    assert report["external_unavailable_reason"] == "api_error"
+    assert "external_benchmark" not in report
+
+
+def test_report_default_reason_is_no_steam_id():
+    ctx = make_ctx()
+    report = build_report(ctx, [], [])
+    assert report["external_unavailable_reason"] == "no_steam_id"
