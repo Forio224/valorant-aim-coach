@@ -281,6 +281,22 @@ async def healthz():
     return body
 
 
+@app.get("/api/v1/analysis")
+async def list_analyses(request: Request, limit: int = 20):
+    """История разборов текущего владельца для фронта (Этап 2).
+
+    AUTH_MODE=off — анонимные сессии (dev, один пользователь); гость в
+    discord-режиме получает [] (не 401 — проще для фронта)."""
+    limit = max(1, min(limit, 100))
+    user = auth.current_user(request)
+    if auth.auth_mode() == "discord" and user is None:
+        return []
+    rows = db.list_recent_sessions(user.id if user else None, limit=limit)
+    return [{"session_id": str(r.id), "status": r.status,
+             "player_id": r.player_id, "clip_id": r.clip_id,
+             "created_at": r.created_at} for r in rows]
+
+
 @app.post("/api/v1/analysis/{session_id}/share")
 async def share_analysis(session_id: str, request: Request):
     """Владелец получает стабильный share-токен для ссылки на отчёт."""

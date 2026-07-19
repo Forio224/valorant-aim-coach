@@ -1,43 +1,69 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchAnalysis, uploadClip } from './api';
+import { fetchAnalysis, listSessions, uploadClip } from './api';
+import AuthBar from './components/AuthBar';
 import PipelineProgress from './components/PipelineProgress';
+import SessionHistory from './components/SessionHistory';
 import UploadForm from './components/UploadForm';
 import ReportView from './components/report/ReportView';
+import useAuth from './hooks/useAuth';
 import './index.css';
 
 const POLL_MS = 3000;
 const TERMINAL = ['COMPLETED', 'FAILED'];
 
 function App() {
-  // Сессия живёт в URL (?session=...) — отчётом можно поделиться ссылкой.
+  // Сессия живёт в URL (?session=...) — отчётом можно поделиться ссылкой;
+  // share-токен из той же ссылки даёт гостевой доступ к чужому отчёту.
   const [sessionId, setSessionId] = useState(
     () => new URLSearchParams(window.location.search).get('session'),
   );
+  const [shareToken] = useState(
+    () => new URLSearchParams(window.location.search).get('share'),
+  );
   const [analysis, setAnalysis] = useState(null); // последний GET-ответ
   const [error, setError] = useState(null);
+  const [unavailable, setUnavailable] = useState(false); // 404/400 по сессии
   const [submitting, setSubmitting] = useState(false);
+  const [history, setHistory] = useState([]);
   const pollRef = useRef(null);
+  const auth = useAuth();
 
   const status = analysis?.status ?? (sessionId ? 'PENDING' : null);
-  const isRunning = Boolean(sessionId) && !TERMINAL.includes(status);
+  const isRunning = Boolean(sessionId) && !unavailable
+    && !TERMINAL.includes(status);
 
   useEffect(() => {
     if (!isRunning) return undefined;
     const tick = async () => {
       try {
-        const data = await fetchAnalysis(sessionId);
+        const data = await fetchAnalysis(sessionId, shareToken);
         setAnalysis(data);
         if (data.status === 'FAILED') {
           setError(data.error || 'разбор прервался без объяснения');
         }
       } catch (err) {
-        // Сеть мигнула — молча пробуем следующим тиком, поллинг дешёвый.
+        // 404 (чужая/несуществующая сессия; существование чужих бэкенд не
+        // подтверждает) и 400 (битый ID) — не сетевой сбой, поллить дальше
+        // бессмысленно. Прочее — сеть мигнула, пробуем следующим тиком.
+        if (err.status === 404 || err.status === 400) {
+          setUnavailable(true);
+        }
       }
     };
     tick(); // первый запрос сразу — готовый отчёт открывается без паузы
     pollRef.current = setInterval(tick, POLL_MS);
     return () => clearInterval(pollRef.current);
-  }, [sessionId, isRunning]);
+  }, [sessionId, isRunning, shareToken]);
+
+  // История разборов под формой: после логина/логаута и при возврате к форме.
+  useEffect(() => {
+    if (auth.loading || sessionId) return;
+    let cancelled = false;
+    listSessions()
+      .then((rows) => { if (!cancelled) setHistory(rows); })
+      .catch(() => {}); // истории нет — форма работает как раньше
+    return () => { cancelled = true; };
+  }, [auth.loading, auth.user, sessionId]);
 
   const handleSubmit = useCallback(async (fields) => {
     setSubmitting(true);
@@ -60,6 +86,15 @@ function App() {
     setSessionId(null);
     setAnalysis(null);
     setError(null);
+    setUnavailable(false);
+  }, []);
+
+  const openSession = useCallback((id) => {
+    window.history.replaceState(null, '', `?session=${id}`);
+    setAnalysis(null);
+    setError(null);
+    setUnavailable(false);
+    setSessionId(id);
   }, []);
 
   const showForm = !sessionId;
@@ -76,6 +111,8 @@ function App() {
       <header className="masthead">
         <span className="masthead-brand">Аим<span>-</span>паспорт</span>
         <span className="round"><i aria-hidden="true" />{roundLabel}</span>
+        <AuthBar mode={auth.mode} user={auth.user}
+                 onAuthChange={auth.refresh} />
       </header>
 
       <main className="page">
@@ -113,7 +150,18 @@ function App() {
               </p>
             </section>
             <UploadForm onSubmit={handleSubmit} submitting={submitting} />
+            <SessionHistory sessions={history} onOpen={openSession} />
           </>
+        )}
+
+        {unavailable && (
+          <div className="notice notice-hypo" role="alert">
+            <strong>Отчёт недоступен.</strong> Войдите в свой аккаунт или
+            запросите ссылку-приглашение у владельца отчёта.
+            <button type="button" className="btn btn-quiet" onClick={reset}>
+              К загрузке клипа
+            </button>
+          </div>
         )}
 
         {error && (

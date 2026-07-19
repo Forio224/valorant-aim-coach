@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 
 import jwt
 from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 logger = logging.getLogger(__name__)
 
@@ -188,17 +188,35 @@ async def callback(code: str, state: str):
     return resp
 
 
+def _avatar_url(user) -> str:
+    """Готовый URL аватара: фронт собрать его не может — CDN-путь требует
+    discord_id, который наружу не отдаётся (и не должен)."""
+    if user.avatar:
+        return (f"https://cdn.discordapp.com/avatars/"
+                f"{user.discord_id}/{user.avatar}.png")
+    # avatar=null -> дефолтная эмбед-аватарка Discord (формула для новых
+    # username-аккаунтов: (id >> 22) % 6)
+    try:
+        index = (int(user.discord_id) >> 22) % 6
+    except ValueError:
+        index = 0
+    return f"https://cdn.discordapp.com/embed/avatars/{index}.png"
+
+
 @router.get("/me")
 async def me(request: Request):
+    """Режим + пользователь одним запросом при старте фронта."""
     user = current_user(request)
     if user is None:
-        return {"user": None}
-    return {"user": {"id": str(user.id), "username": user.username,
-                     "avatar": user.avatar}}
+        return {"mode": auth_mode(), "user": None}
+    return {"mode": auth_mode(),
+            "user": {"id": str(user.id), "username": user.username,
+                     "avatar_url": _avatar_url(user)}}
 
 
 @router.post("/logout")
 async def logout():
-    resp = RedirectResponse(_frontend_url(), status_code=303)
+    # Клиент — fetch: JSON вместо 303-редиректа на HTML фронта.
+    resp = JSONResponse({"ok": True})
     resp.delete_cookie(SESSION_COOKIE)
     return resp

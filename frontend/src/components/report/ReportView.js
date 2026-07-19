@@ -5,6 +5,7 @@ import DrillTable from './DrillTable';
 import EvidenceThumb from './EvidenceThumb';
 import FindingCard from './FindingCard';
 import Lightbox from './Lightbox';
+import ShareButton from './ShareButton';
 
 /** Индекс улик: номер кадра -> url; заметки берём из evidence движка. */
 function buildFrameIndex(analysis) {
@@ -105,9 +106,12 @@ function ReportView({ analysis, onReset }) {
       <section className="panel report-head">
         <div className="report-head-top">
           <h1>Паспорт аима</h1>
-          <button type="button" className="btn btn-quiet" onClick={onReset}>
-            Разобрать другой клип
-          </button>
+          <div className="report-head-actions">
+            <ShareButton analysis={analysis} />
+            <button type="button" className="btn btn-quiet" onClick={onReset}>
+              Разобрать другой клип
+            </button>
+          </div>
         </div>
         {engine?.clip && (
           <ClipMeta clip={engine.clip} profile={engine.profile} />
