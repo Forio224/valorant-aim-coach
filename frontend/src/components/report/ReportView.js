@@ -77,6 +77,7 @@ function ReportView({ analysis, onReset }) {
           confidence: item.confidence,
           text: item.explanation,
           values: engineFinding?.values,
+          severityRatio: engineFinding?.severity_ratio,
           frames,
         };
       })
@@ -91,6 +92,7 @@ function ReportView({ analysis, onReset }) {
           confidence: finding.confidence,
           text: finding.statement,
           values: finding.values,
+          severityRatio: finding.severity_ratio,
           frames,
         };
       });
@@ -144,10 +146,15 @@ function ReportView({ analysis, onReset }) {
 
       {!isEmptyClip && (
         <section className="findings">
-          <h2>Находки — с доказательствами</h2>
-          {cards.map(({ key, ...card }) => (
-            <FindingCard key={key} {...card} onOpenFrame={setOpenedFrame} />
-          ))}
+          <h2>
+            Вердикты
+            <small>обойма — отклонение от порога метрики, считает движок</small>
+          </h2>
+          <div className="findings-grid">
+            {cards.map(({ key, ...card }) => (
+              <FindingCard key={key} {...card} onOpenFrame={setOpenedFrame} />
+            ))}
+          </div>
         </section>
       )}
 

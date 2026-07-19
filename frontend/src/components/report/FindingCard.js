@@ -1,8 +1,10 @@
 import React from 'react';
+import useReveal from '../../hooks/useReveal';
 import OffsetGlyph from '../OffsetGlyph';
 import EvidenceThumb from './EvidenceThumb';
 import {
-  CONFIDENCE_LABELS, METRIC_TITLES, humanLead, keyMetricGloss, labelledValues,
+  CONFIDENCE_LABELS, MAG_CELLS, METRIC_TITLES, formatSeverity, humanLead,
+  keyMetricGloss, labelledValues, magFilled, verdictForSeverity,
 } from './labels';
 
 function ConfidenceBadge({ confidence }) {
@@ -29,19 +31,48 @@ function glyphFor(metric, values) {
   return null;
 }
 
+/** Severity-обойма: число движка + деления, заряжающиеся при появлении. */
+function SeverityMag({ ratio }) {
+  const filled = magFilled(ratio);
+  return (
+    <div className="mag">
+      <div className="num">
+        {formatSeverity(ratio)}
+        <small>от порога</small>
+      </div>
+      <div className="cells" aria-hidden="true">
+        {Array.from({ length: MAG_CELLS }, (_, i) => (
+          <i key={i} className={i < filled ? 'f' : undefined} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /**
  * Одна находка. Порядок подачи: человеческий тезис из чисел движка →
- * объяснение коуча → минимальная аннотированная цифра (keyMetricGloss) →
- * улики; полный дамп HU-чисел спрятан в «Числа движка».
+ * объяснение коуча → severity-обойма → аннотированная цифра
+ * (keyMetricGloss) → улики; полный дамп HU-чисел спрятан в «Числа движка».
+ * Вердикт (цвет уголков и обоймы) — из severity_ratio движка.
  */
-function FindingCard({ metric, confidence, text, values, frames, onOpenFrame }) {
+function FindingCard({
+  metric, confidence, text, values, severityRatio, frames, onOpenFrame,
+}) {
+  const [ref, inView] = useReveal();
   const glyph = glyphFor(metric, values);
   const lead = humanLead(metric, values);
   const gloss = keyMetricGloss(metric, values);
   const pairs = labelledValues(values);
+  const verdict = verdictForSeverity(severityRatio);
+  const verdictClass = verdict ? ` v-${verdict}` : '';
+  const spanClass = frames.length > 0 ? ' span2' : '';
 
   return (
-    <article className={`finding is-${confidence}`}>
+    <article
+      ref={ref}
+      className={`finding hud rv${verdictClass}${spanClass}${inView ? ' in' : ''}`}
+    >
+      <span className="c" aria-hidden="true" />
       <header className="finding-head">
         <h3>{METRIC_TITLES[metric] ?? metric}</h3>
         <ConfidenceBadge confidence={confidence} />
@@ -51,6 +82,9 @@ function FindingCard({ metric, confidence, text, values, frames, onOpenFrame }) 
         <div className="finding-text">
           {lead && <p className="finding-lead">{lead}</p>}
           <p>{text}</p>
+          {typeof severityRatio === 'number' && (
+            <SeverityMag ratio={severityRatio} />
+          )}
           {gloss.length > 0 && (
             <dl className="finding-gloss">
               {gloss.map(({ label, value, gloss: hint }) => (

@@ -1,55 +1,52 @@
 import React from 'react';
+import useReveal from '../../hooks/useReveal';
 import { METRIC_TITLES, PLATFORM_LABELS } from './labels';
+
+/** Один контракт: номер = приоритет коуча, печать = критерий успеха. */
+function ContractCard({ drill }) {
+  const [ref, inView] = useReveal();
+  return (
+    <article ref={ref} className={`contract rv${inView ? ' in' : ''}`}>
+      <div className="no">{String(drill.priority).padStart(2, '0')}</div>
+      <h3>{drill.name}</h3>
+      <div className="contract-chips">
+        <span className={`chip chip-${drill.platform}`}>
+          {PLATFORM_LABELS[drill.platform] ?? drill.platform}
+        </span>
+        {drill.tier != null && <span className="chip">tier {drill.tier}</span>}
+      </div>
+      <div className="dose">{drill.dose}</div>
+      {drill.rationale && (
+        <p className="contract-rationale">{drill.rationale}</p>
+      )}
+      <div className="contract-target">
+        лечит: {METRIC_TITLES[drill.target_metric] ?? drill.target_metric}
+      </div>
+      <div className="stamp">закрыт, когда {drill.success_criterion}</div>
+    </article>
+  );
+}
 
 function DrillTable({ drills }) {
   const ordered = [...drills].sort((a, b) => a.priority - b.priority);
 
   return (
-    <section className="panel drills">
-      <h2>План тренировок</h2>
+    <section className="drills">
+      <h2>
+        Контракты на завтра
+        <small>по одному дриллу на проблему</small>
+      </h2>
       <p className="section-lede">
-        По одному дриллу на проблему, в порядке приоритета. Критерий успеха —
-        это когда дрилл можно бросать.
+        Номер — приоритет. Печать — критерий успеха: когда он выполнен,
+        контракт закрыт и дрилл можно бросать.
       </p>
-      <div className="drills-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th aria-label="Приоритет" />
-              <th>Дрилл</th>
-              <th>Где</th>
-              <th>Дозировка</th>
-              <th>Лечит</th>
-              <th>Критерий успеха</th>
-            </tr>
-          </thead>
-          <tbody>
-            {ordered.map((drill) => (
-              <tr key={drill.drill_id ?? `${drill.priority}-${drill.name}`}>
-                <td className="drill-priority">{drill.priority}</td>
-                <td className="drill-name">
-                  {drill.name}
-                  {drill.tier != null && (
-                    <span className="chip chip-tier">tier {drill.tier}</span>
-                  )}
-                  {drill.rationale && (
-                    <div className="drill-rationale">{drill.rationale}</div>
-                  )}
-                </td>
-                <td>
-                  <span className={`chip chip-${drill.platform}`}>
-                    {PLATFORM_LABELS[drill.platform] ?? drill.platform}
-                  </span>
-                </td>
-                <td className="drill-dose">{drill.dose}</td>
-                <td className="drill-target">
-                  {METRIC_TITLES[drill.target_metric] ?? drill.target_metric}
-                </td>
-                <td className="drill-criterion">{drill.success_criterion}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="contracts">
+        {ordered.map((drill) => (
+          <ContractCard
+            key={drill.drill_id ?? `${drill.priority}-${drill.name}`}
+            drill={drill}
+          />
+        ))}
       </div>
     </section>
   );

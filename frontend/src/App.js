@@ -65,21 +65,48 @@ function App() {
   const showForm = !sessionId;
   const showReport = status === 'COMPLETED' && analysis;
 
+  // Статус-пилюля в шапке — телеметрия текущей фазы.
+  const clip = analysis?.evidence_report?.clip;
+  const roundLabel = showReport && clip
+    ? `клип ${clip.clip_id} · игрок ${clip.player_id}`
+    : isRunning ? 'разбор идёт' : 'ожидание клипа';
+
   return (
     <div className="app">
       <header className="masthead">
-        <span className="masthead-brand">Аим-паспорт</span>
-        <span className="masthead-sub">разбор аима Valorant по кадрам-уликам</span>
+        <span className="masthead-brand">Аим<span>-</span>паспорт</span>
+        <span className="round"><i aria-hidden="true" />{roundLabel}</span>
       </header>
 
       <main className="page">
         {showForm && (
           <>
             <section className="hero">
-              <h1>
-                Каждый совет — с кадром-доказательством
+              <svg className="ghost" viewBox="0 0 480 480" aria-hidden="true">
+                <circle cx="240" cy="240" r="180" strokeWidth="1" />
+                <g className="spin">
+                  <circle cx="240" cy="240" r="90" strokeWidth="1"
+                          strokeDasharray="4 6" />
+                </g>
+                <g className="spin2">
+                  <circle cx="240" cy="240" r="140" strokeWidth="1"
+                          strokeDasharray="1 26" />
+                </g>
+                <line x1="240" y1="20" x2="240" y2="150" strokeWidth="1" />
+                <line x1="240" y1="330" x2="240" y2="460" strokeWidth="1" />
+                <line x1="20" y1="240" x2="150" y2="240" strokeWidth="1" />
+                <line x1="330" y1="240" x2="460" y2="240" strokeWidth="1" />
+              </svg>
+              <div className="feed enter d1">
+                <b>Движок</b>
+                <span className="x">✕</span>
+                <span>догадки о твоём аиме</span>
+              </div>
+              <h1 className="enter d2">
+                Каждый совет —<br />
+                с кадром-<span className="outline laser">доказательством</span>
               </h1>
-              <p className="hero-lede">
+              <p className="hero-lede enter d3">
                 Детектор находит головы врагов, движок меряет смещение прицела
                 в Head Units, коуч объясняет числа и собирает план тренировок.
                 Числа считает только движок — коуч не имеет права их выдумывать.
@@ -108,9 +135,8 @@ function App() {
       </main>
 
       <footer className="footer">
-        <span>
-          Метрики в HU (Head Units) — смещение прицела в высотах головы цели.
-        </span>
+        <span>Числа считает только движок</span>
+        <span>Коуч объясняет · не измеряет</span>
       </footer>
     </div>
   );

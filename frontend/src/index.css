@@ -1,73 +1,100 @@
 /* ============================================================
-   Аим-паспорт — дизайн-токены.
-   База тёмная (кадры из игры тёмные), цвет только семантический:
-   красный = «мимо», янтарный = «гипотеза», зелёный = «в цель».
+   Аим-паспорт — «Спектаторский HUD» (вариант C, см. DESIGN.md).
+   Цвет строго семантический: красный = «мимо», янтарный =
+   «гипотеза», зелёный = «в цель». Форма — срез (--cut), не радиус.
+   Три голоса: Russo One (диктор) / Manrope (объяснение) /
+   JetBrains Mono (телеметрия).
    ============================================================ */
 :root {
-  --ink: #101418;          /* фон страницы */
-  --panel: #161b22;        /* поверхности */
-  --panel-2: #1c232c;      /* приподнятые элементы */
-  --line: #2a323c;         /* границы, хэйрлайны */
-  --paper: #e8e6e1;        /* основной текст */
-  --dim: #8a94a0;          /* вторичный текст */
-  --hit: #57c99b;          /* «в цель»: критерии успеха, on-line */
-  --miss: #e5484d;         /* «мимо»: перелёты, ошибки, FAILED */
-  --hypo: #d9a441;         /* гипотеза, осторожность */
+  --field: #0d1117;
+  --panel: #151c26;
+  --panel-up: #1b2432;
+  --line: #2a3648;
+  --paper: #f2f4f7;
+  --dim: #8593a5;
+  --hit: #3ddc97;
+  --miss: #ff4655;
+  --hypo: #ffb454;
+  --halo-miss: rgba(255, 70, 85, 0.45);
+  --halo-hypo: rgba(255, 180, 84, 0.4);
+  --halo-hit: rgba(61, 220, 151, 0.4);
 
-  --font-display: 'Unbounded', 'Segoe UI', sans-serif;
+  --font-display: 'Russo One', 'Black Ops One', sans-serif;
+  --font-body: 'Manrope', 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', Consolas, monospace;
-  --font-body: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 
-  --text-base: clamp(0.95rem, 0.9rem + 0.2vw, 1.05rem);
-  --space-block: clamp(1.5rem, 1rem + 2vw, 3rem);
-  --radius: 3px;
-  --fast: 160ms ease;
+  --cut: polygon(10px 0, 100% 0, 100% calc(100% - 10px),
+         calc(100% - 10px) 100%, 0 100%, 0 10px);
+
+  --fast: 180ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  --rise: 600ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  --space-block: clamp(1.6rem, 1.1rem + 2vw, 3rem);
+  --pad-card: 26px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background: var(--ink);
+  background:
+    repeating-linear-gradient(-55deg,
+      transparent 0 26px, rgba(133, 147, 165, 0.025) 26px 27px),
+    var(--field);
   color: var(--paper);
   font-family: var(--font-body);
-  font-size: var(--text-base);
-  line-height: 1.55;
+  font-size: 15px;
+  line-height: 1.6;
 }
 
 img { max-width: 100%; height: auto; display: block; }
 
 :focus-visible {
-  outline: 2px solid var(--hit);
+  outline: 2px solid var(--hypo);
   outline-offset: 2px;
 }
 
-.app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
+.app { min-height: 100vh; display: flex; flex-direction: column; }
 
 .page {
   width: 100%;
-  max-width: 920px;
+  max-width: 1140px;
   margin: 0 auto;
-  padding: var(--space-block) 20px;
+  padding: var(--space-block) 24px;
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-block);
 }
 
-/* ── Шапка: тонкая линия с центральной риской-прицелом ──────── */
+/* ── Разделитель с риской прицела ───────────────────────────── */
+.tick-rule {
+  position: relative;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.tick-rule::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  width: 1px;
+  height: 9px;
+  background: var(--dim);
+}
+
+/* ── Шапка: бренд + статус-пилюля ───────────────────────────── */
 .masthead {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
+  max-width: 1140px;
+  width: 100%;
+  margin: 0 auto;
   padding: 18px 24px;
-  border-bottom: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
   position: relative;
 }
-.masthead::after {              /* риска прицела по центру линии */
+.masthead::after {              /* риска прицела по центру нижней линии */
   content: '';
   position: absolute;
   left: 50%;
@@ -76,52 +103,188 @@ img { max-width: 100%; height: auto; display: block; }
   height: 9px;
   background: var(--dim);
 }
+.app > .masthead { border-bottom: 1px solid var(--line); }
 .masthead-brand {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.06em;
+  font-size: 17px;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-.masthead-sub {
+.masthead-brand span { color: var(--miss); }
+.round {
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--dim);
-  font-size: 0.8rem;
+  border: 1px solid var(--line);
+  padding: 6px 14px;
+  clip-path: var(--cut);
+  background: var(--panel);
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+/* точка статуса: «сонар» — мягкий расходящийся ореол, не мигание */
+.round i {
+  width: 6px;
+  height: 6px;
+  background: var(--hit);
+  border-radius: 50%;
+  position: relative;
+  flex-shrink: 0;
+}
+.round i::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 1px solid var(--hit);
+  opacity: 0;
+  animation: halo 3.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes halo {
+  0%   { transform: scale(0.4); opacity: 0; }
+  35%  { opacity: 0.55; }
+  70%, 100% { transform: scale(1.5); opacity: 0; }
 }
 
-/* ── Hero ────────────────────────────────────────────────────── */
-.hero h1 {
-  font-family: var(--font-display);
-  font-weight: 500;
-  font-size: clamp(1.5rem, 1rem + 2.6vw, 2.6rem);
-  line-height: 1.15;
-  max-width: 18ch;
-  margin-bottom: 1rem;
+/* ── Hero: загрузочный каскад ───────────────────────────────── */
+.hero { padding: 24px 0 8px; position: relative; overflow: hidden; }
+.hero .ghost {
+  position: absolute;
+  right: -140px;
+  top: 50%;
+  margin-top: -240px;
+  width: 480px;
+  height: 480px;
+  opacity: 0.05;
+  pointer-events: none;
 }
-.hero-lede {
-  color: var(--dim);
-  max-width: 58ch;
-}
+.hero .ghost circle, .hero .ghost line { stroke: var(--paper); fill: none; }
+.hero .ghost .spin { transform-origin: 240px 240px; animation: spin 46s linear infinite; }
+.hero .ghost .spin2 { transform-origin: 240px 240px; animation: spin 80s linear infinite reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── Панель ──────────────────────────────────────────────────── */
-.panel {
+.enter { opacity: 0; transform: translateY(14px); animation: enter var(--rise) forwards; }
+.enter.d1 { animation-delay: 80ms; }
+.enter.d2 { animation-delay: 220ms; }
+.enter.d3 { animation-delay: 420ms; }
+@keyframes enter { to { opacity: 1; transform: none; } }
+
+.feed {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: clamp(1.2rem, 1rem + 1.5vw, 2rem);
+  border-left: 3px solid var(--miss);
+  padding: 7px 16px;
+  clip-path: var(--cut);
+}
+.feed b { color: var(--miss); font-weight: 700; }
+.feed .x { color: var(--dim); }
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(28px, 4.4vw, 48px);
+  line-height: 1.12;
+  text-transform: uppercase;
+  margin-top: 20px;
+  max-width: 19ch;
+  position: relative;
+}
+.hero h1 .outline { color: transparent; -webkit-text-stroke: 1.5px var(--paper); }
+/* лазер прочерчивается после появления заголовка */
+.hero h1 .laser { position: relative; white-space: nowrap; }
+.hero h1 .laser::after {
+  content: '';
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  bottom: -8px;
+  height: 2px;
+  background: var(--miss);
+  box-shadow: 0 0 12px rgba(255, 70, 85, 0.7);
+  transform: scaleX(0);
+  transform-origin: left;
+  animation: laser 700ms cubic-bezier(0.16, 1, 0.3, 1) 900ms forwards;
+}
+@keyframes laser { to { transform: scaleX(1); } }
+.hero-lede { color: var(--dim); max-width: 54ch; margin-top: 24px; }
+
+/* ── HUD-уголки: «захват цели» ──────────────────────────────── */
+.hud { position: relative; transition: transform var(--fast); }
+.hud::before, .hud::after,
+.hud > .c::before, .hud > .c::after {
+  content: '';
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--dim);
+  transition: transform var(--fast), border-color var(--fast);
+  pointer-events: none;
+}
+.hud::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.hud::after { top: -1px; right: -1px; border-left: 0; border-bottom: 0; }
+.hud > .c::before { bottom: -1px; left: -1px; border-right: 0; border-top: 0; }
+.hud > .c::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.hud:hover { transform: translateY(-2px); }
+.hud:hover::before { transform: translate(5px, 5px); }
+.hud:hover::after { transform: translate(-5px, 5px); }
+.hud:hover > .c::before { transform: translate(5px, -5px); }
+.hud:hover > .c::after { transform: translate(-5px, -5px); }
+.hud:hover::before, .hud:hover::after,
+.hud:hover > .c::before, .hud:hover > .c::after {
+  border-color: var(--verdict, var(--paper));
+}
+.hud.is-target::before, .hud.is-target::after,
+.hud.is-target > .c::before, .hud.is-target > .c::after {
+  border-color: var(--miss);
+}
+
+/* ── Панель (базовая поверхность) ───────────────────────────── */
+.panel {
+  background: var(--panel);
+  padding: var(--pad-card);
+  position: relative;
 }
 
 h2 {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 1.05rem;
-  letter-spacing: 0.02em;
-  margin-bottom: 0.9rem;
+  font-weight: 400;
+  font-size: 17px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 20px;
+}
+h2 small {
+  color: var(--dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin-left: 14px;
+  letter-spacing: 0.1em;
 }
 .section-lede {
   color: var(--dim);
-  font-size: 0.88rem;
-  margin: -0.4rem 0 1.1rem;
+  font-size: 14px;
+  margin: -0.7rem 0 1.2rem;
+  max-width: 60ch;
 }
+
+/* ── Каскадный вход по скроллу (класс in ставит useReveal) ──── */
+.rv {
+  opacity: 0;
+  transform: translateY(18px);
+  transition: opacity 550ms ease, transform 550ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rv.in { opacity: 1; transform: none; }
 
 /* ── Форма загрузки ─────────────────────────────────────────── */
 .upload-form { display: flex; flex-direction: column; gap: 1.4rem; }
@@ -134,7 +297,6 @@ h2 {
 
 .file-field {
   border: 1px dashed var(--line);
-  border-radius: var(--radius);
   padding: 1.3rem;
   display: flex;
   flex-direction: column;
@@ -143,7 +305,7 @@ h2 {
   transition: border-color var(--fast), background var(--fast);
   position: relative;
 }
-.file-field:hover { border-color: var(--dim); background: var(--panel-2); }
+.file-field:hover { border-color: var(--dim); background: var(--panel-up); }
 .file-field[data-filled='yes'] { border-style: solid; border-color: var(--hit); }
 .file-field input {
   position: absolute;
@@ -151,32 +313,34 @@ h2 {
   opacity: 0;
   cursor: pointer;
 }
-.file-field-title { font-weight: 600; word-break: break-all; }
-.file-field-hint { color: var(--dim); font-family: var(--font-mono); font-size: 0.75rem; }
-.file-field-error { color: var(--miss); font-size: 0.8rem; }
+.file-field-title { font-weight: 800; word-break: break-all; }
+.file-field-hint { color: var(--dim); font-family: var(--font-mono); font-size: 11px; }
+.file-field-error { color: var(--miss); font-size: 13px; }
 
 .field { display: flex; flex-direction: column; gap: 0.35rem; }
 .field label {
-  font-size: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--dim);
 }
-.field input {
-  background: var(--ink);
+.field input, .field select {
+  background: var(--field);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
   color: var(--paper);
   font: inherit;
   padding: 0.6rem 0.75rem;
   transition: border-color var(--fast);
 }
-.field input:hover { border-color: var(--dim); }
-.field input:focus { border-color: var(--paper); outline: none; }
-.field-hint { color: var(--dim); font-size: 0.75rem; }
+.field input:hover, .field select:hover { border-color: var(--dim); }
+.field input:focus, .field select:focus { border-color: var(--paper); outline: none; }
+.field-hint { color: var(--dim); font-size: 12px; }
 
 .extras summary {
   cursor: pointer;
   color: var(--dim);
-  font-size: 0.85rem;
+  font-size: 14px;
 }
 .extras summary:hover { color: var(--paper); }
 .extras-grid {
@@ -187,33 +351,40 @@ h2 {
 }
 .extras-note {
   color: var(--dim);
-  font-size: 0.78rem;
+  font-size: 12px;
   margin-top: 0.8rem;
   max-width: 60ch;
 }
 
-.btn {
-  font: inherit;
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background var(--fast), color var(--fast), border-color var(--fast);
-}
+/* ── Кнопки: красная заливка только у главного действия ─────── */
+.btn { font: inherit; cursor: pointer; }
 .btn-primary {
   align-self: flex-start;
-  background: var(--paper);
-  color: var(--ink);
-  border: 1px solid var(--paper);
-  font-weight: 600;
-  padding: 0.7rem 1.6rem;
+  background: var(--miss);
+  color: #fff;
+  border: 0;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 14px;
+  padding: 14px 34px;
+  clip-path: var(--cut);
+  transition: filter var(--fast), transform var(--fast), opacity var(--fast);
 }
-.btn-primary:hover:not(:disabled) { background: var(--hit); border-color: var(--hit); }
+.btn-primary:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+.btn-primary:active:not(:disabled) { transform: translateY(0); }
 .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-quiet {
   background: transparent;
   color: var(--dim);
   border: 1px solid var(--line);
-  padding: 0.45rem 0.9rem;
-  font-size: 0.85rem;
+  clip-path: var(--cut);
+  padding: 0.5rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: color var(--fast), border-color var(--fast);
 }
 .btn-quiet:hover { color: var(--paper); border-color: var(--dim); }
 
@@ -221,8 +392,8 @@ h2 {
 .notice {
   border: 1px solid var(--line);
   border-left-width: 3px;
-  border-radius: var(--radius);
   background: var(--panel);
+  clip-path: var(--cut);
   padding: 1rem 1.2rem;
   display: flex;
   flex-direction: column;
@@ -230,8 +401,8 @@ h2 {
 }
 .notice-miss { border-left-color: var(--miss); }
 .notice-hypo { border-left-color: var(--hypo); }
-.notice details summary { cursor: pointer; color: var(--dim); font-size: 0.85rem; }
-.notice ul { margin: 0.5rem 0 0 1.2rem; color: var(--dim); font-size: 0.85rem; }
+.notice details summary { cursor: pointer; color: var(--dim); font-size: 14px; }
+.notice ul { margin: 0.5rem 0 0 1.2rem; color: var(--dim); font-size: 14px; }
 
 /* ── Прогресс конвейера ─────────────────────────────────────── */
 .progress-steps {
@@ -262,29 +433,39 @@ h2 {
   border: 1px solid var(--line);
   margin-top: 5px;
   flex-shrink: 0;
-  background: var(--ink);
+  background: var(--field);
+  position: relative;
 }
 .progress-step.is-done .progress-dot { background: var(--hit); border-color: var(--hit); }
 .progress-step.is-active .progress-dot {
   border-color: var(--paper);
   background: var(--paper);
-  animation: breathe 1.6s ease-in-out infinite;
 }
-.progress-title { font-weight: 600; font-size: 0.95rem; }
+/* активная станция дышит сонаром — тем же, что точка статуса */
+.progress-step.is-active .progress-dot::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1px solid var(--paper);
+  opacity: 0;
+  animation: halo 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.progress-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .progress-step.is-ahead .progress-title,
 .progress-step.is-ahead .progress-detail { color: var(--dim); opacity: 0.6; }
-.progress-detail { color: var(--dim); font-size: 0.83rem; }
+.progress-detail { color: var(--dim); font-size: 13px; }
 .progress-note {
   margin-top: 1.2rem;
   color: var(--dim);
-  font-size: 0.8rem;
+  font-size: 12px;
   border-top: 1px solid var(--line);
   padding-top: 0.9rem;
-}
-
-@keyframes breathe {
-  0%, 100% { transform: scale(1); opacity: 1; }
-  50% { transform: scale(0.7); opacity: 0.6; }
 }
 
 /* ── Отчёт: шапка ───────────────────────────────────────────── */
@@ -299,8 +480,10 @@ h2 {
 }
 .report-head h1 {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: clamp(1.4rem, 1rem + 2vw, 2rem);
+  font-weight: 400;
+  font-size: clamp(22px, 1rem + 2vw, 32px);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 .clip-meta {
   display: flex;
@@ -308,56 +491,73 @@ h2 {
   gap: 0.5rem 2rem;
   margin-top: 1rem;
   font-family: var(--font-mono);
-  font-size: 0.8rem;
+  font-size: 12px;
 }
-.clip-meta dt { color: var(--dim); font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.clip-meta dt {
+  color: var(--dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
 .clip-meta dd { margin-top: 0.15rem; }
 
 /* ── Портрет ────────────────────────────────────────────────── */
 .summary p { max-width: 68ch; }
 .summary p + p { margin-top: 0.9rem; }
 
-/* ── Находки ────────────────────────────────────────────────── */
-.findings { display: flex; flex-direction: column; gap: 1.2rem; }
+/* ── Находки: бенто-сетка с вердиктами ──────────────────────── */
+.findings { display: flex; flex-direction: column; gap: 18px; }
 .findings > h2 { margin-bottom: 0; }
-
+/* карточка с кадрами-уликами занимает весь ряд, без кадров — полряда */
+.findings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+}
 .finding {
   background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: clamp(1.1rem, 1rem + 1vw, 1.8rem);
+  padding: var(--pad-card);
 }
-/* Уверенность кодируется формой рамки: диагноз — сплошная,
-   гипотеза — пунктир. Не только цветом. */
-.finding.is-diagnosis { border-left: 3px solid var(--paper); }
-.finding.is-hypothesis { border-style: dashed; border-left: 3px dashed var(--hypo); }
-.finding.is-insufficient { border-style: dashed; opacity: 0.85; }
+.finding.span2 { grid-column: span 2; background: var(--panel-up); }
+/* цвет вердикта карточки — из severity_ratio движка (labels.js) */
+.finding.v-miss { --verdict: var(--miss); --halo: var(--halo-miss); }
+.finding.v-hypo { --verdict: var(--hypo); --halo: var(--halo-hypo); }
+.finding.v-hit  { --verdict: var(--hit);  --halo: var(--halo-hit); }
 
 .finding-head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
   gap: 1rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.9rem;
 }
 .finding-head h3 {
   font-family: var(--font-display);
-  font-weight: 500;
-  font-size: 0.95rem;
+  font-weight: 400;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
+/* Уверенность кодируется формой, не только цветом:
+   диагноз — сплошная заливка, гипотеза — заливка янтарём,
+   мало данных — пунктирная рамка. */
 .badge {
   font-family: var(--font-mono);
-  font-size: 0.68rem;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.2rem 0.55rem;
-  border-radius: var(--radius);
+  letter-spacing: 0.12em;
+  padding: 4px 10px;
+  clip-path: var(--cut);
   white-space: nowrap;
 }
-.badge-diagnosis { background: var(--paper); color: var(--ink); }
-.badge-hypothesis { border: 1px dashed var(--hypo); color: var(--hypo); }
-.badge-insufficient { border: 1px dashed var(--dim); color: var(--dim); }
+.badge-diagnosis { background: var(--paper); color: var(--field); }
+.badge-hypothesis { background: var(--hypo); color: var(--field); }
+.badge-insufficient {
+  border: 1px dashed var(--dim);
+  color: var(--dim);
+  clip-path: none;
+}
 
 .finding-body {
   display: flex;
@@ -369,16 +569,62 @@ h2 {
 
 /* Главный тезис — крупно и человеческим языком; детали ниже и тише. */
 .finding-lead {
-  font-size: 1.08rem;
-  font-weight: 600;
-  line-height: 1.4;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.45;
   margin-bottom: 0.7rem;
 }
-.finding-text p + p { margin-top: 0.6rem; color: var(--dim); }
+.finding-text p + p { margin-top: 0.6rem; color: var(--dim); font-size: 14px; }
 
-/* Минимальная аннотированная цифра — на виду, но с пояснением значения. */
+/* ── Severity-обойма: severity_ratio движка делениями ───────── */
+.mag {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-top: 18px;
+}
+.mag .num {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 30px;
+  line-height: 1;
+  color: var(--verdict, var(--paper));
+  text-shadow: 0 0 14px var(--halo, transparent);
+}
+.mag .num small {
+  display: block;
+  font-size: 9px;
+  font-weight: 400;
+  color: var(--dim);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  margin-top: 4px;
+  text-shadow: none;
+}
+.mag .cells { display: flex; gap: 4px; padding-bottom: 3px; }
+.mag .cells i {
+  width: 7px;
+  height: 20px;
+  background: var(--line);
+  transform: skewX(-12deg);
+}
+.mag .cells i.f { transition: background 180ms ease, box-shadow 180ms ease; }
+.rv.in .cells i.f { background: var(--verdict); box-shadow: 0 0 8px var(--halo); }
+/* стагер зарядки: каждое следующее деление чуть позже */
+.rv.in .cells i.f:nth-child(1) { transition-delay: 350ms; }
+.rv.in .cells i.f:nth-child(2) { transition-delay: 430ms; }
+.rv.in .cells i.f:nth-child(3) { transition-delay: 510ms; }
+.rv.in .cells i.f:nth-child(4) { transition-delay: 590ms; }
+.rv.in .cells i.f:nth-child(5) { transition-delay: 670ms; }
+.rv.in .cells i.f:nth-child(6) { transition-delay: 750ms; }
+.rv.in .cells i.f:nth-child(7) { transition-delay: 830ms; }
+.rv.in .cells i.f:nth-child(8) { transition-delay: 910ms; }
+.rv.in .cells i.f:nth-child(9) { transition-delay: 990ms; }
+.rv.in .cells i.f:nth-child(10) { transition-delay: 1070ms; }
+
+/* Минимальная аннотированная цифра — на виду, с пояснением. */
 .finding-gloss {
-  margin-top: 0.7rem;
+  margin-top: 0.9rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -389,17 +635,18 @@ h2 {
 }
 .gloss-label {
   color: var(--dim);
-  font-size: 0.72rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 .gloss-value {
   font-family: var(--font-mono);
-  font-size: 0.85rem;
+  font-size: 13px;
 }
 .gloss-item dd {
   color: var(--dim);
-  font-size: 0.82rem;
+  font-size: 13px;
   margin-top: 0.1rem;
 }
 
@@ -408,9 +655,9 @@ h2 {
   cursor: pointer;
   color: var(--dim);
   font-family: var(--font-mono);
-  font-size: 0.72rem;
+  font-size: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 .tech-values summary:hover { color: var(--paper); }
 
@@ -422,13 +669,14 @@ h2 {
 }
 .value-pair dt {
   color: var(--dim);
-  font-size: 0.68rem;
+  font-size: 10px;
+  font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
 .value-pair dd {
   font-family: var(--font-mono);
-  font-size: 0.9rem;
+  font-size: 13px;
   margin-top: 0.1rem;
 }
 
@@ -436,7 +684,7 @@ h2 {
 .offset-glyph { flex-shrink: 0; text-align: center; }
 .offset-glyph figcaption {
   color: var(--dim);
-  font-size: 0.68rem;
+  font-size: 11px;
   margin-top: 0.3rem;
   max-width: 110px;
 }
@@ -453,9 +701,8 @@ h2 {
   margin-top: 1.2rem;
 }
 .evidence {
-  background: var(--ink);
+  background: var(--field);
   border: 1px solid var(--line);
-  border-radius: var(--radius);
   overflow: hidden;
 }
 .evidence img { aspect-ratio: 16 / 9; object-fit: cover; }
@@ -466,8 +713,38 @@ h2 {
   border: 0;
   background: none;
   cursor: zoom-in;
+  position: relative;
+  overflow: hidden;
 }
 .evidence-zoom:hover img { opacity: 0.85; }
+/* медленный блик по кадру — как отсвет монитора */
+.evidence-zoom::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 45%;
+  background: linear-gradient(100deg,
+    transparent, rgba(242, 244, 247, 0.05), transparent);
+  animation: sweep 7s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+@keyframes sweep { 0%, 55% { left: -50%; } 85%, 100% { left: 110%; } }
+.evidence figcaption {
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.evidence-no {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.evidence-note { font-size: 13px; }
 
 /* Полноэкранный просмотр улики */
 .lightbox {
@@ -505,104 +782,142 @@ h2 {
   right: 20px;
   background: none;
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  clip-path: var(--cut);
   color: var(--paper);
   font-size: 1rem;
   padding: 0.4rem 0.7rem;
   cursor: pointer;
 }
 .lightbox-close:hover { border-color: var(--paper); }
-.evidence figcaption {
-  padding: 0.55rem 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-.evidence-no {
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  color: var(--dim);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-.evidence-note { font-size: 0.8rem; }
 
-/* ── Дриллы ─────────────────────────────────────────────────── */
-.drills-scroll { overflow-x: auto; }
-.drills table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.88rem;
-  min-width: 640px;
+/* ── Контракты (план тренировок) ────────────────────────────── */
+.contracts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
 }
-.drills th {
-  text-align: left;
-  color: var(--dim);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-weight: 400;
-  padding: 0.5rem 0.9rem 0.5rem 0;
-  border-bottom: 1px solid var(--line);
+.contract {
+  background: var(--panel);
+  padding: 24px;
+  clip-path: var(--cut);
+  border-left: 3px solid var(--miss);
 }
-.drills td {
-  padding: 0.85rem 0.9rem 0.85rem 0;
-  border-bottom: 1px solid var(--line);
-  vertical-align: top;
-}
-.drill-priority {
+.contract .no {
   font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 1.3rem;
-  color: var(--dim);
-  width: 2.2rem;
+  color: var(--miss);
+  font-size: 20px;
 }
-.drill-name { font-weight: 600; }
-.drill-dose { font-family: var(--font-mono); font-size: 0.8rem; }
-.drill-target { color: var(--dim); font-size: 0.83rem; }
-.drill-criterion { color: var(--hit); font-size: 0.85rem; }
+.contract h3 { font-size: 15px; font-weight: 800; margin-top: 8px; }
+.contract-chips { display: flex; gap: 0.5rem; margin-top: 8px; flex-wrap: wrap; }
+.contract .dose {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.contract-rationale { color: var(--dim); font-size: 13px; margin-top: 8px; }
+.contract-target {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: 8px;
+  letter-spacing: 0.06em;
+}
+/* печать «пропечатывается» при входе в вьюпорт */
+.stamp {
+  margin-top: 16px;
+  padding: 10px 14px;
+  border: 1px dashed var(--line);
+  font-size: 13px;
+  color: var(--hit);
+  opacity: 0;
+  transform: scale(1.12);
+  transition: opacity 300ms ease 500ms,
+    transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1) 500ms;
+}
+.rv.in .stamp { opacity: 1; transform: scale(1); }
+.stamp::before {
+  content: '✓';
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin-right: 8px;
+}
 
 .chip {
   font-family: var(--font-mono);
-  font-size: 0.7rem;
-  padding: 0.15rem 0.5rem;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 3px 9px;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  clip-path: var(--cut);
   white-space: nowrap;
   color: var(--dim);
 }
 .chip-kovaaks { border-color: var(--paper); color: var(--paper); }
 .chip-range { border-color: var(--dim); }
 .chip-ingame { border-color: var(--hit); color: var(--hit); }
-.chip-tier { margin-left: 0.5rem; }
-
-.drill-rationale {
-  margin-top: 0.3rem;
-  font-weight: 400;
-  font-size: 0.8rem;
-  color: var(--dim);
-}
 
 /* ── Оговорки, футер ───────────────────────────────────────── */
-.caveats ul { margin-left: 1.2rem; color: var(--dim); }
+.caveats ul { margin-left: 1.2rem; color: var(--dim); font-size: 14px; }
 .caveats li + li { margin-top: 0.4rem; }
 
 .footer {
   border-top: 1px solid var(--line);
+  max-width: 1140px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 20px 24px;
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--dim);
-  font-size: 0.75rem;
-  padding: 1rem 24px;
-  text-align: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  position: relative;
+}
+.footer::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -5px;
+  width: 1px;
+  height: 9px;
+  background: var(--dim);
 }
 
 /* ── Отзывчивость ───────────────────────────────────────────── */
+@media (max-width: 860px) {
+  .hero .ghost { display: none; }
+  .contracts { grid-template-columns: 1fr; }
+  .findings-grid { grid-template-columns: 1fr; }
+  .finding.span2 { grid-column: auto; }
+}
+/* На самых узких экранах длинное слово-контур не влезает в 28px */
+@media (max-width: 374px) {
+  .hero h1 { font-size: 23px; }
+}
 @media (max-width: 720px) {
   .field-row { grid-template-columns: 1fr; }
   .extras-grid { grid-template-columns: repeat(2, 1fr); }
   .finding-body { flex-direction: column-reverse; }
-  .masthead { flex-direction: column; gap: 2px; }
+  .masthead { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .footer { flex-direction: column; gap: 4px; text-align: left; }
 }
 
+/* при reduced-motion всё видно сразу, ничего не движется */
 @media (prefers-reduced-motion: reduce) {
-  * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-delay: 0ms !important;
+  }
+  .enter, .rv, .stamp { opacity: 1 !important; transform: none !important; }
+  .rv .cells i.f { background: var(--verdict); box-shadow: none; }
+  .hero h1 .laser::after { transform: scaleX(1); }
 }

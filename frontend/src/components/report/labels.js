@@ -44,6 +44,30 @@ export const VALUE_LABELS = {
   y_undershoots: 'Y-недолётов',
 };
 
+// Severity-обойма: severity_ratio считает ТОЛЬКО движок (schema 1.3,
+// отклонение находки от её собственного порога); фронт лишь рисует.
+// Порог = середина обоймы (5 делений), полная обойма = 2× порога.
+export const MAG_CELLS = 10;
+const MAG_CELLS_PER_THRESHOLD = 5;
+
+/** Вердикт карточки: < 1 — в пороге, 1–2 — за порогом, ≥ 2 — вдвое за. */
+export function verdictForSeverity(ratio) {
+  if (typeof ratio !== 'number') return null;
+  if (ratio >= 2) return 'miss';
+  if (ratio >= 1) return 'hypo';
+  return 'hit';
+}
+
+export function magFilled(ratio) {
+  if (typeof ratio !== 'number') return 0;
+  return Math.max(0, Math.min(MAG_CELLS,
+    Math.round(ratio * MAG_CELLS_PER_THRESHOLD)));
+}
+
+export function formatSeverity(ratio) {
+  return `${ratio.toFixed(2).replace('.', ',')}×`;
+}
+
 export function formatValue(value) {
   if (typeof value !== 'number') return String(value);
   return Number.isInteger(value) ? String(value) : value.toFixed(3);
