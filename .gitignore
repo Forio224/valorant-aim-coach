@@ -51,3 +51,8 @@ Thumbs.db
 
 # Smoke-прогоны коуча (локальные, не для репо)
 coach_*_smoke.json
+
+# === Конфигурация Claude Code (личная, не код продукта) ===
+.agents/
+.claude/
+skills-lock.json
