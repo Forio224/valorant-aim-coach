@@ -8,3 +8,5 @@ google-genai
 arq
 alembic
 psycopg[binary]
+boto3
+sentry-sdk[fastapi]

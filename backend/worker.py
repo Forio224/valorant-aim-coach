@@ -44,6 +44,9 @@ async def analyze_clip(ctx: dict, payload: dict) -> None:
 
 async def startup(ctx: dict) -> None:
     """Свой DatabaseManager и реальный пайплайн — раз на процесс воркера."""
+    from backend.observability import init_sentry
+
+    init_sentry("worker")
     from backend.database import DatabaseManager
     from backend.services.analysis_pipeline import run_pipeline
     from backend.services.history_provider import make_history_provider

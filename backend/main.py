@@ -26,8 +26,11 @@ from backend.services.history_provider import make_history_provider
 from backend.services.job_queue import create_job_queue
 from backend.services.storage import UPLOAD_PREFIX, create_storage
 
+from backend.observability import init_sentry
+
 load_dotenv()
 logger = logging.getLogger(__name__)
+init_sentry("api")
 
 app = FastAPI(title="Valorant AI Aim Coach", version="2.0.0")
 
@@ -194,6 +197,28 @@ async def upload_video(background_tasks: BackgroundTasks,
         background_tasks, video_ref=video_path, filename=file.filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
         map_name=map_name, training_platform=training_platform)
+
+
+@app.get("/healthz")
+async def healthz():
+    """Проверка живости для оркестратора и аптайм-мониторинга."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import text
+
+    body = {
+        "status": "ok",
+        "queue": os.getenv("QUEUE_BACKEND", "background"),
+        "storage": os.getenv("STORAGE_BACKEND", "local"),
+        "db": "ok",
+    }
+    try:
+        with db.engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:                              # noqa: BLE001 — статус в ответ
+        logger.exception("healthz: БД недоступна")
+        body.update(status="degraded", db="error")
+        return JSONResponse(status_code=503, content=body)
+    return body
 
 
 @app.get("/api/v1/analysis/{session_id}")
