@@ -49,12 +49,16 @@ class AnalysisJob:
 
 def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
                          pipeline: Callable,
-                         history_provider=None) -> None:
+                         history_provider=None, storage=None) -> None:
     """Синхронно исполнить разбор и записать исход сессии в БД.
 
-    evidence_dir — корень улик; кадры сессии кладутся в подкаталог
-    {session_id} и наружу отдаются как URL /evidence/{session_id}/...
+    evidence_dir — корень улик: кадры рендерятся в подкаталог {session_id},
+    дальше их судьбу решает storage (local: остаются под StaticFiles,
+    r2: уезжают в бакет). storage=None — локальное поведение.
     """
+    from backend.services.storage import LocalStorage
+
+    storage = storage or LocalStorage(evidence_dir)
     sid = uuid.UUID(job.session_id)
 
     def on_status(status: str) -> None:
@@ -62,15 +66,17 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
 
     try:
         session_evidence_dir = str(Path(evidence_dir) / job.session_id)
-        result = pipeline(
-            job.video_path, job.player_id, clip_id=job.clip_id,
-            sens=job.sens, edpi=job.edpi, agent=job.agent,
-            map_name=job.map_name, training_platform=job.training_platform,
-            evidence_dir=session_evidence_dir, on_status=on_status,
-            history_provider=history_provider)
+        with storage.fetch_video(job.video_path) as local_video:
+            result = pipeline(
+                local_video, job.player_id, clip_id=job.clip_id,
+                sens=job.sens, edpi=job.edpi, agent=job.agent,
+                map_name=job.map_name,
+                training_platform=job.training_platform,
+                evidence_dir=session_evidence_dir, on_status=on_status,
+                history_provider=history_provider)
 
-        frame_urls = [f"/evidence/{job.session_id}/{Path(p).name}"
-                      for p in result.evidence_frames]
+        frame_urls = storage.publish_evidence(job.session_id,
+                                              result.evidence_frames)
         db.update_session(
             sid,
             status="COMPLETED",

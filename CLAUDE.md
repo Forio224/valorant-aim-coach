@@ -83,6 +83,10 @@ GET /api/v1/analysis/{session_id}
 - `backend/worker.py` — arq-воркер:
   `python -m arq backend.worker.WorkerSettings` (нужен REDIS_URL);
   WORKER_MAX_JOBS=1 — GPU обрабатывает один клип за раз
+- `backend/services/storage.py` — файлы: `STORAGE_BACKEND=local` (диск,
+  дефолт) | `r2` (S3/R2: presigned PUT мимо API → POST /start; улики в
+  бакете, отдаются presigned GET при поллинге; ретеншн клипов —
+  lifecycle бакета на uploads/, 7 дней)
 
 ### Engine (Phase A, `engine/` + `aim_metrics.py`)
 

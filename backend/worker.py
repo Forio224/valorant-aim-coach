@@ -38,7 +38,8 @@ async def analyze_clip(ctx: dict, payload: dict) -> None:
         run_analysis_session, ctx["db"], job,
         evidence_dir=ctx["evidence_dir"],
         pipeline=ctx["pipeline"],
-        history_provider=ctx["history_provider"]))
+        history_provider=ctx["history_provider"],
+        storage=ctx.get("storage")))
 
 
 async def startup(ctx: dict) -> None:
@@ -54,6 +55,9 @@ async def startup(ctx: dict) -> None:
                                     os.path.join(upload_dir, "evidence"))
     ctx["pipeline"] = run_pipeline
     ctx["history_provider"] = make_history_provider(db)
+    from backend.services.storage import create_storage
+
+    ctx["storage"] = create_storage(evidence_dir=ctx["evidence_dir"])
 
 
 class WorkerSettings:

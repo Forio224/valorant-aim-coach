@@ -44,15 +44,22 @@
 Сейчас: SQLite + BackgroundTasks + локальные папки. Для одного сервера и
 беты этого почти достаточно, но три вещи обязательны.
 
-1. [ ] **Очередь задач вместо BackgroundTasks.** Пайплайн живёт минуты;
+1. [x] **Очередь задач вместо BackgroundTasks** (3c59f33: arq,
+       QUEUE_BACKEND=background|arq, воркер backend/worker.py; живой Redis —
+       проверить на staging). Пайплайн живёт минуты;
        рестарт uvicorn убивает разбор молча. Перевести на arq или RQ
        (Redis): ретраи стадий, воркер отдельным процессом, сессия
        переживает деплой. Идемпотентность по clip_id уже есть — использовать
        её для безопасного повтора.
-2. [ ] **PostgreSQL вместо SQLite** (SQLModel остаётся, добавить Alembic
+2. [x] **PostgreSQL вместо SQLite** (2f9877e: psycopg3-нормализация URL,
+       UTCDateTime, Alembic 0001; живой Postgres — на staging).
+       Исходно: (SQLModel остаётся, добавить Alembic
        для миграций). SQLite не переживёт конкурентную запись
        воркер+API на проде.
-3. [ ] **Файлы → S3-совместимое хранилище** (Cloudflare R2 — без платы за
+3. [x] **Файлы → S3-совместимое хранилище** (storage.py: STORAGE_BACKEND=
+       local|r2, presigned PUT /uploads → /start, улики presigned GET;
+       lifecycle 7 дней настроить на бакете; живой R2 — на staging).
+       Исходно: (Cloudflare R2 — без платы за
        трафик, или Backblaze B2): клипы и улики. Загрузка клипа —
        presigned URL напрямую в хранилище, чтобы 300 МБ не шли через API.
        Ретеншн: исходный клип удаляется через 7 дней (это персональные
