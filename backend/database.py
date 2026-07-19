@@ -9,11 +9,42 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID, uuid4
 
+from sqlalchemy import Column, DateTime, TypeDecorator
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 
 # Жизненный цикл сессии: PENDING -> DETECTING -> MEASURING -> COACHING ->
 # COMPLETED | FAILED. При coach_failed сессия всё равно COMPLETED —
 # у игрока остаётся отчёт движка без коуч-текста (частичный результат).
+
+
+def normalize_database_url(url: str) -> str:
+    """postgres:// и postgresql:// (Neon/Supabase/Heroku-стиль) ->
+    postgresql+psycopg:// — иначе SQLAlchemy тянет psycopg2, которого нет."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg://" + url[len("postgres://"):]
+    if url.startswith("postgresql://"):
+        return "postgresql+psycopg://" + url[len("postgresql://"):]
+    return url
+
+
+class UTCDateTime(TypeDecorator):
+    """Даты всегда aware-UTC на любом диалекте.
+
+    Postgres с naive-колонкой молча терял бы UTC; SQLite отдаёт naive даже
+    при timezone=True — навешиваем tzinfo при чтении сами.
+    """
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is not None:
+            return value.astimezone(timezone.utc)
+        return value
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
 
 
 class AnalysisSession(SQLModel, table=True):
@@ -29,14 +60,18 @@ class AnalysisSession(SQLModel, table=True):
     evidence_frames: Optional[str] = None   # JSON-список URL кадров-улик
     error: Optional[str] = None             # причина FAILED
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc))
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime()))
     updated_at: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc))
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(UTCDateTime()))
 
 
 class DatabaseManager:
     def __init__(self, db_url: str = "sqlite:///./aim_coach.db"):
-        self.engine = create_engine(db_url, echo=False)
+        db_url = normalize_database_url(db_url)
+        # pool_pre_ping: воркер живёт часами, Postgres-коннект может протухнуть.
+        self.engine = create_engine(db_url, echo=False, pool_pre_ping=True)
         self._init_db()
 
     def _init_db(self) -> None:

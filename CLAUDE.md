@@ -69,7 +69,10 @@ GET /api/v1/analysis/{session_id}
 
 **Key files:**
 - `backend/main.py` — FastAPI: upload/poll, статусы, StaticFiles /evidence
-- `backend/database.py` — SQLModel `AnalysisSession` с JSON-колонками
+- `backend/database.py` — SQLModel `AnalysisSession` с JSON-колонками;
+  URL нормализуется под psycopg3, даты — aware-UTC (`UTCDateTime`);
+  dev/тесты — create_all на SQLite, прод — Postgres через
+  `python -m alembic upgrade head` (миграции в `migrations/`)
 - `backend/services/analysis_pipeline.py` — YOLO → движок → коуч;
   детектор и коуч-клиент инжектируются (тесты без torch/API)
 - `backend/services/analysis_task.py` — исполнение разбора как задача
