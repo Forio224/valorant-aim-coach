@@ -31,7 +31,7 @@ function AuthBar({ mode, user, onAuthChange }) {
   if (!user) {
     return (
       <div className="auth-bar">
-        <button type="button" className="btn" onClick={handleLogin}
+        <button type="button" className="btn btn-discord" onClick={handleLogin}
                 disabled={busy}>
           Войти через Discord
         </button>

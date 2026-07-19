@@ -1000,3 +1000,21 @@ h2 small {
   padding: 0.3rem 0.5rem;
   min-width: 26ch;
 }
+
+/* Кнопка входа: блюрпл Discord как единственное чужое пятно в HUD —
+   сразу читается «этот вход про Discord», не про наш продукт. */
+.btn-discord {
+  background: #5865f2;
+  color: #fff;
+  border: 0;
+  clip-path: var(--cut);
+  padding: 0.55rem 1.1rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: filter var(--fast), transform var(--fast), opacity var(--fast);
+}
+.btn-discord:hover:not(:disabled) { filter: brightness(1.15); transform: translateY(-1px); }
+.btn-discord:disabled { opacity: 0.4; cursor: not-allowed; }
