@@ -24,7 +24,10 @@ from backend.database import DatabaseManager
 from backend.services.analysis_pipeline import run_pipeline
 from backend.services.analysis_task import AnalysisJob, run_analysis_session
 from backend.services.history_provider import make_history_provider
+from backend.services.clip_validation import (ClipValidationError,
+                                              validate_clip)
 from backend.services.job_queue import create_job_queue
+from backend.services.rate_limit import enforce_upload_limit
 from backend.services.storage import UPLOAD_PREFIX, create_storage
 
 from backend.observability import init_sentry
@@ -60,6 +63,38 @@ app.mount("/evidence", StaticFiles(directory=EVIDENCE_DIR), name="evidence")
 
 # STORAGE_BACKEND=local (дефолт) | r2 — см. services/storage.py.
 storage = create_storage(evidence_dir=EVIDENCE_DIR)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    """Базовые заголовки безопасности; HSTS — только за HTTPS (прод)."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=()")
+    if os.getenv("SECURE_COOKIES", "0") == "1":
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains")
+    return response
+
+
+def _enforce_daily_quota(user) -> None:
+    """Квота free-тира (юнит-экономика: 3 клипа/день); аноним (dev) — без квоты."""
+    if user is None:
+        return
+    from datetime import datetime, time as dtime, timezone
+
+    quota = int(os.getenv("FREE_DAILY_CLIPS", "3"))
+    day_start = datetime.combine(
+        datetime.now(timezone.utc).date(), dtime.min, tzinfo=timezone.utc)
+    used = db.count_sessions_since(user.id, day_start)
+    if used >= quota:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Дневной лимит бесплатных разборов исчерпан "
+                   f"({quota}/день). Новая квота — завтра по UTC.")
 
 ALLOWED_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "300"))
@@ -128,6 +163,7 @@ async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
 
 @app.post("/api/v1/analysis/uploads")
 async def create_upload(request: Request, filename: str = Form(...)):
+    enforce_upload_limit(request)
     auth.require_user(request)
     """Шаг 1 presigned-флоу: куда грузить клип.
 
@@ -156,7 +192,9 @@ async def start_analysis(request: Request,
                          map_name: str | None = Form(None),
                          training_platform: str | None = Form(None)):
     """Шаг 2 presigned-флоу: клип уже в бакете — валидируем и запускаем."""
+    enforce_upload_limit(request)
     user = auth.require_user(request)
+    _enforce_daily_quota(user)
     player_id = _validate_upload_meta(filename, player_id, training_platform)
     if not key.startswith(UPLOAD_PREFIX):
         raise HTTPException(status_code=400, detail="Некорректный ключ клипа")
@@ -189,7 +227,9 @@ async def upload_video(request: Request,
                        map_name: str | None = Form(None),
                        training_platform: str | None = Form(None)):
     """Клип + player_id (людей не сливаем) + опциональный input-space."""
+    enforce_upload_limit(request)
     user = auth.require_user(request)
+    _enforce_daily_quota(user)
     player_id = _validate_upload_meta(file.filename, player_id,
                                      training_platform)
     content = await file.read()
@@ -205,6 +245,13 @@ async def upload_video(request: Request,
     video_path = os.path.join(UPLOAD_DIR, f"{file_id}{ext}")
     with open(video_path, "wb") as buffer:
         buffer.write(content)
+
+    # Мусор и оверлимит по длительности — 422 до создания сессии и до GPU.
+    try:
+        validate_clip(video_path)
+    except ClipValidationError as exc:
+        os.remove(video_path)
+        raise HTTPException(status_code=422, detail=str(exc))
 
     return await _create_and_enqueue(
         background_tasks, video_ref=video_path, filename=file.filename,

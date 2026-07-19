@@ -51,7 +51,8 @@ class AnalysisJob:
 
 def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
                          pipeline: Callable,
-                         history_provider=None, storage=None) -> None:
+                         history_provider=None, storage=None,
+                         validator: Optional[Callable] = None) -> None:
     """Синхронно исполнить разбор и записать исход сессии в БД.
 
     evidence_dir — корень улик: кадры рендерятся в подкаталог {session_id},
@@ -95,6 +96,8 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
     try:
         session_evidence_dir = str(Path(evidence_dir) / job.session_id)
         with storage.fetch_video(job.video_path) as local_video:
+            if validator is not None:
+                validator(local_video)     # мусор/оверлимит — до GPU
             result = pipeline(
                 local_video, job.player_id, clip_id=job.clip_id,
                 sens=job.sens, edpi=job.edpi, agent=job.agent,

@@ -142,6 +142,18 @@ class DatabaseManager:
         with Session(self.engine) as session:
             return session.get(User, user_id)
 
+    def count_sessions_since(self, owner_user_id: UUID,
+                             since: datetime) -> int:
+        """Сколько разборов аккаунт создал с момента since (квота free-тира)."""
+        from sqlalchemy import func
+
+        with Session(self.engine) as session:
+            return session.exec(
+                select(func.count())
+                .select_from(AnalysisSession)
+                .where(AnalysisSession.owner_user_id == owner_user_id)
+                .where(AnalysisSession.created_at >= since)).one()
+
     def list_sessions_for_player(self, player_id: str,
                                  owner_user_id: Optional[UUID] = None):
         # Порядок отдаёт SQL (2C): история прогресса не должна зависеть от

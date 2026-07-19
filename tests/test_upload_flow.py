@@ -74,6 +74,7 @@ def api(tmp_path, monkeypatch):
             coach_errors=[], coach_attempts=1)
 
     monkeypatch.setattr(main, "run_pipeline", fake_pipeline)
+    monkeypatch.setattr(main, "validate_clip", lambda *a, **k: None)
     return TestClient(main.app), db, storage
 
 

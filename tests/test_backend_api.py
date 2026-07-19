@@ -71,6 +71,9 @@ def api(tmp_path, monkeypatch):
         return _result(frames=[str(frame)])
 
     monkeypatch.setattr(main, "run_pipeline", fake_pipeline)
+    # Фикстура шлёт фейковые байты вместо видео — cv2-валидацию глушим
+    # (у неё свои тесты на настоящем mp4: test_clip_validation.py)
+    monkeypatch.setattr(main, "validate_clip", lambda *a, **k: None)
     return TestClient(main.app), db, main, calls
 
 

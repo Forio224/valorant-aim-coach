@@ -87,6 +87,14 @@ GET /api/v1/analysis/{session_id}
   дефолт) | `r2` (S3/R2: presigned PUT мимо API → POST /start; улики в
   бакете, отдаются presigned GET при поллинге; ретеншн клипов —
   lifecycle бакета на uploads/, 7 дней)
+- `backend/auth.py` — `AUTH_MODE=off` (дефолт, всё анонимно) | `discord`
+  (OAuth, JWT в httpOnly-куке; отчёт видит владелец или гость по
+  share-токену — POST /analysis/{id}/share; профили и история — в
+  разрезе аккаунта: PROFILE_DIR/{owner_id})
+- `backend/services/clip_validation.py` — cv2-проверка клипа до GPU
+  (мусор → 422/FAILED; кэп MAX_CLIP_SECONDS=120)
+- `backend/services/rate_limit.py` — лимит загрузок по IP
+  (RATE_LIMIT_UPLOADS, дефолт off) + квота FREE_DAILY_CLIPS=3/день
 
 ### Engine (Phase A, `engine/` + `aim_metrics.py`)
 

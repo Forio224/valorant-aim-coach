@@ -48,7 +48,8 @@ async def analyze_clip(ctx: dict, payload: dict) -> None:
         evidence_dir=ctx["evidence_dir"],
         pipeline=ctx["pipeline"],
         history_provider=history_provider,
-        storage=ctx.get("storage")))
+        storage=ctx.get("storage"),
+        validator=ctx.get("validator")))
 
 
 async def startup(ctx: dict) -> None:
@@ -70,6 +71,9 @@ async def startup(ctx: dict) -> None:
     from backend.services.storage import create_storage
 
     ctx["storage"] = create_storage(evidence_dir=ctx["evidence_dir"])
+    from backend.services.clip_validation import validate_clip
+
+    ctx["validator"] = validate_clip
 
 
 class WorkerSettings:
