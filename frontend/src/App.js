@@ -149,7 +149,8 @@ function App() {
                 Числа считает только движок — коуч не имеет права их выдумывать.
               </p>
             </section>
-            <UploadForm onSubmit={handleSubmit} submitting={submitting} />
+            <UploadForm onSubmit={handleSubmit} submitting={submitting}
+                        user={auth.user} />
             <SessionHistory sessions={history} onOpen={openSession} />
           </>
         )}

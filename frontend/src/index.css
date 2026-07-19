@@ -825,6 +825,12 @@ h2 small {
   margin-top: 8px;
   letter-spacing: 0.06em;
 }
+.drill-external {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 8px;
+}
 /* печать «пропечатывается» при входе в вьюпорт */
 .stamp {
   margin-top: 16px;

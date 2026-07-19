@@ -31,7 +31,7 @@ function framesForNumbers(byNumber, numbers) {
     .filter(Boolean);
 }
 
-function ClipMeta({ clip, profile }) {
+function ClipMeta({ clip, profile, external }) {
   const seconds = clip.fps ? clip.frame_count / clip.fps : null;
   return (
     <dl className="clip-meta">
@@ -43,6 +43,15 @@ function ClipMeta({ clip, profile }) {
       {clip.sens != null && <div><dt>Сенса</dt><dd>{clip.sens}</dd></div>}
       {clip.agent && <div><dt>Агент</dt><dd>{clip.agent}</dd></div>}
       {clip.map_name && <div><dt>Карта</dt><dd>{clip.map_name}</dd></div>}
+      {external && (
+        <div>
+          <dt>Ранг KovaaK&apos;s</dt>
+          <dd>Voltaic {external.season}
+            {Object.keys(external.tiers ?? {}).length > 0 &&
+              ` · тиров с данными: ${Object.keys(external.tiers).length}`}
+          </dd>
+        </div>
+      )}
       {profile && (
         <div>
           <dt>Профиль</dt>
@@ -114,7 +123,8 @@ function ReportView({ analysis, onReset }) {
           </div>
         </div>
         {engine?.clip && (
-          <ClipMeta clip={engine.clip} profile={engine.profile} />
+          <ClipMeta clip={engine.clip} profile={engine.profile}
+                    external={engine.external_benchmark} />
         )}
       </section>
 

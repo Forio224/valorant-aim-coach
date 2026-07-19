@@ -7,7 +7,7 @@ async function throwHttpError(resp) {
   throw new Error(`сервер ответил ${resp.status}${detail ? `: ${detail}` : ''}`);
 }
 
-function metaForm({ playerId, sens, edpi, agent, mapName, trainingPlatform }) {
+function metaForm({ playerId, sens, edpi, agent, mapName, trainingPlatform, steamId }) {
   const form = new FormData();
   form.append('player_id', playerId);
   if (sens) form.append('sens', sens);
@@ -15,6 +15,7 @@ function metaForm({ playerId, sens, edpi, agent, mapName, trainingPlatform }) {
   if (agent) form.append('agent', agent);
   if (mapName) form.append('map_name', mapName);
   if (trainingPlatform) form.append('training_platform', trainingPlatform);
+  if (steamId) form.append('steam_id', steamId);
   return form;
 }
 

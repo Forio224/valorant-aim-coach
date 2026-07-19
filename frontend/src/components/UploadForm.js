@@ -5,7 +5,7 @@ const ACCEPT = '.mp4,.avi,.mov,.mkv';
 // игрока только после долгой загрузки.
 const MAX_MB = Number(process.env.REACT_APP_MAX_UPLOAD_MB || 300);
 
-function UploadForm({ onSubmit, submitting }) {
+function UploadForm({ onSubmit, submitting, user }) {
   const [file, setFile] = useState(null);
   const [fileError, setFileError] = useState(null);
   const [playerId, setPlayerId] = useState('');
@@ -14,6 +14,15 @@ function UploadForm({ onSubmit, submitting }) {
   const [agent, setAgent] = useState('');
   const [mapName, setMapName] = useState('');
   const [trainingPlatform, setTrainingPlatform] = useState('');
+  const [steamId, setSteamId] = useState('');
+
+  // Предзаполнение из аккаунта, когда /me долетел ПОСЛЕ монтирования формы.
+  // Зависим только от user: правка поля игроком (steamId) переигрывать эффект
+  // не должна, иначе ввод затирался бы значением аккаунта.
+  const accountSteamId = user?.steam_id;
+  React.useEffect(() => {
+    if (accountSteamId) setSteamId((prev) => prev || accountSteamId);
+  }, [accountSteamId]);
 
   const ready = file && playerId.trim() && !submitting;
 
@@ -28,6 +37,7 @@ function UploadForm({ onSubmit, submitting }) {
       agent: agent.trim(),
       mapName: mapName.trim(),
       trainingPlatform,
+      steamId: steamId.trim(),
     });
   };
 
@@ -112,6 +122,17 @@ function UploadForm({ onSubmit, submitting }) {
               <option value="ingame">в Valorant (Range/DM)</option>
               <option value="kovaaks">KovaaK&apos;s</option>
             </select>
+          </div>
+          <div className="field">
+            <label htmlFor="steam-id">SteamID64 (ранг KovaaK&apos;s)</label>
+            <input id="steam-id" type="text" inputMode="numeric"
+              pattern="\d{17}" value={steamId}
+              onChange={(e) => setSteamId(e.target.value)}
+              placeholder="76561198…" />
+            <span className="field-hint">
+              17 цифр — найти на steamid.io или в URL профиля Steam.
+              Подтянем ваш ранг Voltaic S5 из KovaaK&apos;s.
+            </span>
           </div>
         </div>
         <p className="extras-note">

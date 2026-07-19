@@ -22,6 +22,13 @@ function ContractCard({ drill }) {
       <div className="contract-target">
         лечит: {METRIC_TITLES[drill.target_metric] ?? drill.target_metric}
       </div>
+      {drill.external_score != null && (
+        <div className="drill-external">
+          скор в KovaaK&apos;s: {drill.external_score}
+          {drill.external_threshold != null &&
+            ` · верхний порог тира: ${drill.external_threshold}`}
+        </div>
+      )}
       <div className="stamp">закрыт, когда {drill.success_criterion}</div>
     </article>
   );
