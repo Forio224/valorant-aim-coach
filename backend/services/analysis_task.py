@@ -106,7 +106,8 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
                 map_name=job.map_name,
                 training_platform=job.training_platform,
                 evidence_dir=session_evidence_dir, on_status=on_status,
-                history_provider=history_provider, **pipeline_kwargs)
+                history_provider=history_provider, steam_id=job.steam_id,
+                **pipeline_kwargs)
 
         frame_urls = storage.publish_evidence(job.session_id,
                                               result.evidence_frames)
@@ -120,6 +121,10 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
             coach_failed=result.coach_failed,
             coach_errors=json.dumps(result.coach_errors, ensure_ascii=False),
             evidence_frames=json.dumps(frame_urls),
+            external_benchmark=(
+                json.dumps(result.evidence_report["external_benchmark"],
+                           ensure_ascii=False)
+                if "external_benchmark" in result.evidence_report else None),
         )
         _log_outcome("COMPLETED"
                      + (" (coach_failed)" if result.coach_failed else ""))

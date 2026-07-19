@@ -330,3 +330,40 @@ def test_pipeline_emits_drill_progress_from_injected_history(video, tmp_path):
 def test_pipeline_no_history_empty_drill_progress(video, tmp_path):
     result = _run(video, tmp_path)               # дефолтный провайдер отсутствует → []
     assert result.evidence_report["drill_progress"] == []
+
+
+# --- Внешний ранк KovaaK's через пайплайн ------------------------------------
+
+def _run_external(video, tmp_path, **kwargs):
+    config = PipelineConfig(profile_dir=str(tmp_path / "profiles"))
+    return run_pipeline(
+        str(video), "p", clip_id="c", config=config,
+        evidence_dir=str(tmp_path / "ev"),
+        detector=lambda path: {},          # пустой клип — без коуча
+        **kwargs)
+
+
+def test_external_fetcher_failure_never_fails_session(video, tmp_path):
+    """Спека: любой сбой клиента -> COMPLETED без блока, не FAILED."""
+    def exploding_fetcher(steam_id):
+        raise RuntimeError("api down hard")
+    result = _run_external(video, tmp_path, steam_id="76561198000000001",
+                           external_fetcher=exploding_fetcher)
+    assert result.evidence_report["external_unavailable_reason"] == "api_error"
+
+
+def test_external_snapshot_lands_in_report(video, tmp_path):
+    snap = {"source": "kovaaks_webapp_unofficial", "season": "S5",
+            "fetched_at": "x", "tiers_failed": [], "tiers": {}}
+    result = _run_external(video, tmp_path, steam_id="76561198000000001",
+                           external_fetcher=lambda sid: (snap, None))
+    assert result.evidence_report["external_benchmark"] == snap
+
+
+def test_no_steam_id_skips_fetcher_entirely(video, tmp_path):
+    calls = []
+    result = _run_external(
+        video, tmp_path,
+        external_fetcher=lambda sid: calls.append(sid) or (None, "api_error"))
+    assert calls == []
+    assert result.evidence_report["external_unavailable_reason"] == "no_steam_id"

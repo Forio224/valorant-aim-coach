@@ -149,7 +149,10 @@ def run_pipeline(video_path: str, player_id: str, *,
                  on_status: Optional[StatusCallback] = None,
                  detector: Optional[Detector] = None,
                  coach_client=None,
-                 history_provider: Optional[Callable] = None) -> PipelineResult:
+                 history_provider: Optional[Callable] = None,
+                 steam_id: Optional[str] = None,
+                 external_fetcher: Optional[Callable] = None
+                 ) -> PipelineResult:
     """Полный продуктовый прогон одного клипа одного игрока."""
     cfg = config or PipelineConfig.from_env()
     notify = on_status or (lambda status: None)
@@ -185,9 +188,26 @@ def run_pipeline(video_path: str, player_id: str, *,
     provider = history_provider or (lambda pid, cid: [])
     drill_history = provider(player_id, ctx.clip_id)
 
+    # Внешний ранк KovaaK's: чужой недокументированный API — сбой любого
+    # рода деградирует в «данных нет», сессию не роняет (контракт спеки).
+    external_block, external_reason = None, None
+    if steam_id:
+        fetcher = external_fetcher
+        if fetcher is None:
+            from backend.services.kovaaks_client import (
+                fetch_benchmark_progress)
+            fetcher = fetch_benchmark_progress
+        try:
+            external_block, external_reason = fetcher(steam_id)
+        except Exception:                  # noqa: BLE001 — деградация
+            logger.exception("внешний ранк KovaaK's не получен")
+            external_block, external_reason = None, "api_error"
+
     report = build_report(ctx, samples, episodes, duel_hu=cfg.duel_hu,
                           profile=profile, drill_history=drill_history,
-                          attribution=attribution)
+                          attribution=attribution,
+                          external_benchmark=external_block,
+                          external_unavailable_reason=external_reason)
     frame_paths = render_evidence_frames(str(video_path), report,
                                          evidence_dir, cap=cfg.evidence_cap)
 
