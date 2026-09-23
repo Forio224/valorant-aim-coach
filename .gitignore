@@ -56,3 +56,8 @@ coach_*_smoke.json
 .agents/
 .claude/
 skills-lock.json
+
+# === Локальные артефакты отладки (скриншоты, логи Playwright MCP) ===
+/*.png
+.playwright-mcp/
+/package-lock.json
