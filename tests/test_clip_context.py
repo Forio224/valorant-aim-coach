@@ -99,6 +99,16 @@ def test_training_platform_validated():
                     height=1080, frame_count=10, training_platform="csgo")
 
 
+@pytest.mark.parametrize("platform", ["kovaaks", "aimbeast", "ingame"])
+def test_training_platform_accepts_every_supported_source(platform):
+    """Aimbeast — такой же аим-тренажёр, как Kovaak's: клип оттуда разбирается
+    тем же пайплайном, поэтому платформа должна проходить валидацию."""
+    ctx = ClipContext(player_id="p", clip_id="c", fps=60, width=1920,
+                      height=1080, frame_count=10,
+                      training_platform=platform)
+    assert ctx.training_platform == platform
+
+
 # ── CVAT meta parsing ───────────────────────────────────────────────────────
 
 

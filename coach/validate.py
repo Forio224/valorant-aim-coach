@@ -211,6 +211,11 @@ def _known_numbers(evidence: dict) -> List[float]:
                     pool.append(float(sc[key]))
             pool.extend(float(m) for m in (sc.get("rank_maxes") or [])
                         if _is_number(m))
+    # Попадания (schema 1.5): измерения аим-тренажёра. Движок их не считал,
+    # но коуч имеет право цитировать — заземляем тем же множеством.
+    # `synced` булев и в пул не попадает: _is_number отсеивает bool.
+    shots = evidence.get("shots") or {}
+    pool.extend(float(v) for v in shots.values() if _is_number(v))
     return pool
 
 

@@ -32,6 +32,7 @@ from backend.services.rate_limit import enforce_upload_limit
 from backend.services.storage import UPLOAD_PREFIX, create_storage
 
 from backend.observability import init_sentry
+from engine.clip_context import SUPPORTED_PLATFORMS
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -101,6 +102,11 @@ ALLOWED_EXTENSIONS = (".mp4", ".avi", ".mov", ".mkv")
 MAX_UPLOAD_MB = float(os.getenv("MAX_UPLOAD_MB", "300"))
 MAX_UPLOAD_BYTES = int(MAX_UPLOAD_MB * 1024 * 1024)
 
+# Лог прогона аим-тренажёра: текстовый файл на сотни килобайт, не видео.
+ALLOWED_STATS_EXTENSIONS = (".csv", ".json", ".txt")
+MAX_STATS_BYTES = int(float(os.getenv("MAX_STATS_MB", "5")) * 1024 * 1024)
+TRAINER_PLATFORMS_WITH_STATS = ("kovaaks", "aimbeast")
+
 STEAM_ID_RE = re.compile(r"^\d{17}$")
 
 
@@ -148,32 +154,76 @@ def _validate_upload_meta(filename: str | None, player_id: str,
         raise HTTPException(status_code=400, detail="Unsupported video format")
     # Валидация на границе API: иначе ValueError из ClipContext перехватится
     # пайплайном и отрапортуется игроку как ложное «файл повреждён».
-    if training_platform not in (None, "kovaaks", "ingame"):
+    if training_platform not in SUPPORTED_PLATFORMS:
+        allowed = ", ".join(repr(p) for p in sorted(
+            p for p in SUPPORTED_PLATFORMS if p is not None))
         raise HTTPException(
             status_code=422,
-            detail="training_platform должен быть 'kovaaks' или 'ingame'")
+            detail=f"training_platform должен быть одним из: {allowed}")
     player_id = player_id.strip()
     if not player_id:
         raise HTTPException(status_code=400, detail="player_id is required")
     return player_id
 
 
+async def _save_trainer_stats(stats, training_platform: str | None,
+                              file_id: str) -> str | None:
+    """Сохранить лог прогона рядом с клипом; вернуть путь или None.
+
+    Валидация здесь, а не в пайплайне: ошибка формы должна стать понятным
+    422 до создания сессии, а не «разбором без попаданий» постфактум.
+    """
+    if stats is None or not (stats.filename or "").strip():
+        return None
+
+    if training_platform not in TRAINER_PLATFORMS_WITH_STATS:
+        raise HTTPException(
+            status_code=422,
+            detail="Файл статистики принимается только для клипов аим-"
+                   "тренажёра: укажите training_platform 'kovaaks' или "
+                   "'aimbeast'.")
+
+    ext = os.path.splitext(stats.filename or "")[1].lower()
+    if ext not in ALLOWED_STATS_EXTENSIONS:
+        shown = ext or "без расширения"
+        allowed = ", ".join(ALLOWED_STATS_EXTENSIONS)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Неподдерживаемый формат статистики: {shown}. "
+                   f"Ожидается один из: {allowed}.")
+
+    content = await stats.read()
+    if len(content) > MAX_STATS_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Файл статистики слишком большой: "
+                   f"{len(content) / 1048576:.1f} МБ при лимите "
+                   f"{MAX_STATS_BYTES / 1048576:.0f} МБ.")
+
+    stats_path = os.path.join(UPLOAD_DIR, f"{file_id}-stats{ext}")
+    with open(stats_path, "wb") as buffer:
+        buffer.write(content)
+    return stats_path
+
+
 async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
                               video_ref: str, filename: str, player_id: str,
                               sens, edpi, agent, map_name,
                               training_platform, user=None,
-                              steam_id=None) -> dict:
+                              steam_id=None, stats_path=None) -> dict:
     # clip_id = stem исходного имени: повторная загрузка того же клипа
     # идемпотентно перезаписывает его в продольном профиле.
     clip_id = Path(filename).stem
     session = db.create_session(video_ref, player_id=player_id,
                                 clip_id=clip_id,
-                                owner_user_id=user.id if user else None)
+                                owner_user_id=user.id if user else None,
+                                stats_path=stats_path)
     await job_queue.enqueue(background_tasks, AnalysisJob(
         session_id=str(session.id), video_path=video_ref,
         player_id=player_id, clip_id=clip_id, sens=sens, edpi=edpi,
         agent=agent, map_name=map_name, training_platform=training_platform,
-        owner_id=str(user.id) if user else None, steam_id=steam_id))
+        owner_id=str(user.id) if user else None, steam_id=steam_id,
+        stats_path=stats_path))
     return {
         "session_id": str(session.id),
         "status": session.status,
@@ -249,8 +299,13 @@ async def upload_video(request: Request,
                        agent: str | None = Form(None),
                        map_name: str | None = Form(None),
                        training_platform: str | None = Form(None),
-                       steam_id: str | None = Form(None)):
-    """Клип + player_id (людей не сливаем) + опциональный input-space."""
+                       steam_id: str | None = Form(None),
+                       stats: UploadFile | None = File(None)):
+    """Клип + player_id (людей не сливаем) + опциональный input-space.
+
+    `stats` — лог прогона аим-тренажёра: второй необязательный файл, дающий
+    моменты попаданий и TTK, которых в кадре нет.
+    """
     enforce_upload_limit(request)
     user = auth.require_user(request)
     _enforce_daily_quota(user)
@@ -278,11 +333,13 @@ async def upload_video(request: Request,
         os.remove(video_path)
         raise HTTPException(status_code=422, detail=str(exc))
 
+    stats_path = await _save_trainer_stats(stats, training_platform, file_id)
+
     return await _create_and_enqueue(
         background_tasks, video_ref=video_path, filename=file.filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
         map_name=map_name, training_platform=training_platform, user=user,
-        steam_id=steam_id)
+        steam_id=steam_id, stats_path=stats_path)
 
 
 @app.get("/healthz")

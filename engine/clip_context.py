@@ -27,6 +27,10 @@ from typing import Optional, Tuple
 # paired with the wrong video.
 FRAME_COUNT_TOLERANCE = 2
 
+# Источник клипа. Аим-тренажёры ("kovaaks", "aimbeast") разбираются тем же
+# пайплайном, но по своим порогам — см. engine/platform_profile.py.
+SUPPORTED_PLATFORMS = (None, "kovaaks", "aimbeast", "ingame")
+
 
 # ── Data contracts ───────────────────────────────────────────────────────────
 
@@ -66,7 +70,7 @@ class ClipContext:
     edpi: Optional[float] = None
     agent: Optional[str] = None
     map_name: Optional[str] = None
-    training_platform: Optional[str] = None   # "kovaaks" | "ingame" | None
+    training_platform: Optional[str] = None   # см. SUPPORTED_PLATFORMS
 
     def __post_init__(self) -> None:
         if not self.player_id:
@@ -79,9 +83,11 @@ class ClipContext:
             raise ValueError(f"resolution must be positive, got {self.width}x{self.height}")
         if self.frame_count <= 0:
             raise ValueError(f"frame_count must be positive, got {self.frame_count}")
-        if self.training_platform not in (None, "kovaaks", "ingame"):
+        if self.training_platform not in SUPPORTED_PLATFORMS:
+            supported = " | ".join(repr(p) for p in sorted(
+                p for p in SUPPORTED_PLATFORMS if p is not None))
             raise ValueError(
-                f"training_platform must be 'kovaaks' | 'ingame' | None, "
+                f"training_platform must be {supported} | None, "
                 f"got {self.training_platform!r}")
 
     @property

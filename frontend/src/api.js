@@ -20,9 +20,11 @@ function metaForm({ playerId, sens, edpi, agent, mapName, trainingPlatform, stea
 }
 
 /** Прямая загрузка через API (local-хранилище / dev). */
-async function uploadDirect({ file, ...meta }) {
+async function uploadDirect({ file, statsFile, ...meta }) {
   const form = metaForm(meta);
   form.append('file', file);
+  // Лог прогона аим-тренажёра: необязательный второй файл формы.
+  if (statsFile) form.append('stats', statsFile);
   const resp = await fetch(`${API_BASE}/api/v1/analysis/upload`, {
     method: 'POST',
     body: form,

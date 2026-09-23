@@ -1,6 +1,12 @@
 import React, { useState } from 'react';
 
 const ACCEPT = '.mp4,.avi,.mov,.mkv';
+// Лог прогона тренажёра: KovaaK's пишет .csv в FPSAimTrainer/stats,
+// Aimbeast экспортирует .csv или .json.
+const STATS_ACCEPT = '.csv,.json,.txt';
+// Платформы, для которых лог имеет смысл: у игрового клипа момент выстрела
+// не измеряется ничем.
+const TRAINER_PLATFORMS = ['kovaaks', 'aimbeast'];
 // Должен совпадать с MAX_UPLOAD_MB на backend — иначе лимит встретит
 // игрока только после долгой загрузки.
 const MAX_MB = Number(process.env.REACT_APP_MAX_UPLOAD_MB || 300);
@@ -15,6 +21,7 @@ function UploadForm({ onSubmit, submitting, user }) {
   const [mapName, setMapName] = useState('');
   const [trainingPlatform, setTrainingPlatform] = useState('');
   const [steamId, setSteamId] = useState('');
+  const [statsFile, setStatsFile] = useState(null);
 
   // Предзаполнение из аккаунта, когда /me долетел ПОСЛЕ монтирования формы.
   // Зависим только от user: правка поля игроком (steamId) переигрывать эффект
@@ -25,6 +32,13 @@ function UploadForm({ onSubmit, submitting, user }) {
   }, [accountSteamId]);
 
   const ready = file && playerId.trim() && !submitting;
+  const showStats = TRAINER_PLATFORMS.includes(trainingPlatform);
+
+  // Смена платформы на игровую снимает уже выбранный лог: иначе он уехал бы
+  // на сервер и вернулся 422.
+  React.useEffect(() => {
+    if (!TRAINER_PLATFORMS.includes(trainingPlatform)) setStatsFile(null);
+  }, [trainingPlatform]);
 
   const handleSubmit = (event) => {
     event.preventDefault();
@@ -38,6 +52,7 @@ function UploadForm({ onSubmit, submitting, user }) {
       mapName: mapName.trim(),
       trainingPlatform,
       steamId: steamId.trim(),
+      statsFile: showStats ? statsFile : null,
     });
   };
 
@@ -121,8 +136,21 @@ function UploadForm({ onSubmit, submitting, user }) {
               <option value="">не указано</option>
               <option value="ingame">в Valorant (Range/DM)</option>
               <option value="kovaaks">KovaaK&apos;s</option>
+              <option value="aimbeast">Aimbeast</option>
             </select>
           </div>
+          {showStats && (
+            <div className="field">
+              <label htmlFor="stats-file">Файл статистики прогона</label>
+              <input id="stats-file" type="file" accept={STATS_ACCEPT}
+                onChange={(e) => setStatsFile(e.target.files?.[0] || null)} />
+              <span className="field-hint">
+                Необязательно. KovaaK&apos;s кладёт CSV в
+                {' '}FPSAimTrainer/stats рядом с записью. С ним в разборе
+                появятся точность и TTK — движок их по кадрам не видит.
+              </span>
+            </div>
+          )}
           <div className="field">
             <label htmlFor="steam-id">SteamID64 (ранг KovaaK&apos;s)</label>
             <input id="steam-id" type="text" inputMode="numeric"

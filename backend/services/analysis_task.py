@@ -30,6 +30,7 @@ class AnalysisJob:
     training_platform: Optional[str] = None
     owner_id: Optional[str] = None     # аккаунт-владелец (Этап 2)
     steam_id: Optional[str] = None     # SteamID64 -> внешний ранк KovaaK's
+    stats_path: Optional[str] = None   # лог прогона аим-тренажёра (опционально)
 
     def to_payload(self) -> dict:
         return {
@@ -44,6 +45,7 @@ class AnalysisJob:
             "training_platform": self.training_platform,
             "owner_id": self.owner_id,
             "steam_id": self.steam_id,
+            "stats_path": self.stats_path,
         }
 
     @classmethod
@@ -107,6 +109,7 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
                 training_platform=job.training_platform,
                 evidence_dir=session_evidence_dir, on_status=on_status,
                 history_provider=history_provider, steam_id=job.steam_id,
+                stats_path=job.stats_path,
                 **pipeline_kwargs)
 
         frame_urls = storage.publish_evidence(job.session_id,

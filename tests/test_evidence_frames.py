@@ -78,7 +78,7 @@ def test_head_box_px_uses_the_same_tiny_head_guard_as_sample_frame():
 
 
 def test_schema_version_is_1_4():
-    assert SCHEMA_VERSION == "1.4"
+    assert SCHEMA_VERSION == "1.5"
 
 
 def test_every_evidence_entry_carries_geometry():

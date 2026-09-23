@@ -34,7 +34,7 @@ from engine.profile_store import (
     PlayerProfile,
 )
 
-SCHEMA_VERSION = "1.4"
+SCHEMA_VERSION = "1.5"
 MIN_FLICKS_FOR_DIAGNOSIS = 6
 
 # severity_ratio (Фаза 4): отклонение находки от ЕЁ СОБСТВЕННОГО порога —
@@ -324,7 +324,8 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
                  drill_history: Sequence = (),
                  attribution: Optional[AttributionResult] = None,
                  external_benchmark: Optional[dict] = None,
-                 external_unavailable_reason: Optional[str] = None) -> dict:
+                 external_unavailable_reason: Optional[str] = None,
+                 shots: Optional[dict] = None) -> dict:
     """The full evidence-tagged portrait of one clip (+ longitudinal profile).
 
     `attribution` (Фаза 3): когда `samples` пришли из `attribute_targets`,
@@ -362,6 +363,11 @@ def build_report(ctx: ClipContext, samples: Sequence[FrameSample],
     else:
         report["external_unavailable_reason"] = (
             external_unavailable_reason or "no_steam_id")
+    # Попадания (schema 1.5): измерения аим-тренажёра, не наши — движок их
+    # переносит, как и внешний ранк, помечая источник. У игрового клипа
+    # секции нет вовсе: момент выстрела там не измеряется ничем.
+    if shots is not None:
+        report["shots"] = shots
     if profile is not None:
         report["profile"] = asdict(profile)
     return report

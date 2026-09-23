@@ -274,7 +274,7 @@ def test_target_choices_block_is_top_level_and_schema_is_current():
     samples = [s for s in attribution.samples if s.track_id is not None]
     report = build_report(ctx, samples, eps, attribution=attribution)
 
-    assert report["schema_version"] == "1.4"
+    assert report["schema_version"] == "1.5"
     assert isinstance(report["target_choices"], list) and report["target_choices"]
     fields = {"track_id", "from_frame", "to_frame", "chosen_at_radial_hu",
               "head_height_px", "lateral_speed_hu_s", "switch_cost_frames"}
@@ -287,7 +287,7 @@ def test_target_choices_block_is_top_level_and_schema_is_current():
 def test_target_choices_empty_without_attribution():
     ctx, samples, episodes = overshoot_clip()
     report = build_report(ctx, samples, episodes)      # без attribution
-    assert report["schema_version"] == "1.4"
+    assert report["schema_version"] == "1.5"
     assert report["target_choices"] == []
 
 
@@ -323,7 +323,7 @@ EXTERNAL_SNAPSHOT = {
 def test_report_carries_external_benchmark_block():
     ctx = make_ctx()
     report = build_report(ctx, [], [], external_benchmark=EXTERNAL_SNAPSHOT)
-    assert report["schema_version"] == "1.4"
+    assert report["schema_version"] == "1.5"
     assert report["external_benchmark"] == EXTERNAL_SNAPSHOT
     assert "external_unavailable_reason" not in report
 

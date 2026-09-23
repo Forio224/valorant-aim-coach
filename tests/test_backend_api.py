@@ -56,7 +56,9 @@ def api(tmp_path, monkeypatch):
                       edpi=None, agent=None, map_name=None,
                       training_platform=None, config=None,
                       evidence_dir, on_status=None, detector=None,
-                      coach_client=None, history_provider=None):
+                      coach_client=None, history_provider=None,
+                      steam_id=None, external_fetcher=None,
+                      stats_path=None):
         calls.append(dict(video_path=video_path, player_id=player_id,
                           clip_id=clip_id, sens=sens, edpi=edpi, agent=agent,
                           map_name=map_name, training_platform=training_platform,
@@ -151,6 +153,15 @@ def test_upload_accepts_training_platform(api):
                                  "training_platform": "ingame"})
     assert resp.status_code == 200
     assert calls[0]["training_platform"] == "ingame"
+
+
+def test_upload_accepts_aimbeast_platform(api):
+    """Граница API не должна отсекать вторую поддерживаемую платформу."""
+    client, db, main, calls = api
+    resp = _upload(client, data={"player_id": "friend",
+                                 "training_platform": "aimbeast"})
+    assert resp.status_code == 200
+    assert calls[0]["training_platform"] == "aimbeast"
 
 
 def test_upload_rejects_unknown_training_platform(api):

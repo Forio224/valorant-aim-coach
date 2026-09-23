@@ -26,6 +26,7 @@ from centroid_head_detector import CentroidHeadDetector, HSV_PRESETS, HeadDetect
 
 # ── Ground truth types ─────────────────────────────────────────────────────────
 
+
 @dataclass
 class GTBox:
     cx: float
@@ -38,6 +39,7 @@ GroundTruth = Dict[int, List[GTBox]]  # frame_index → visible GT boxes
 
 
 # ── XML parser ─────────────────────────────────────────────────────────────────
+
 
 def parse_cvat_xml(xml_path: str) -> GroundTruth:
     tree = ET.parse(xml_path)
@@ -53,17 +55,20 @@ def parse_cvat_xml(xml_path: str) -> GroundTruth:
             ytl = float(box.attrib["ytl"])
             xbr = float(box.attrib["xbr"])
             ybr = float(box.attrib["ybr"])
-            gt[frame].append(GTBox(
-                cx=(xtl + xbr) / 2.0,
-                cy=(ytl + ybr) / 2.0,
-                width=xbr - xtl,
-                height=ybr - ytl,
-            ))
+            gt[frame].append(
+                GTBox(
+                    cx=(xtl + xbr) / 2.0,
+                    cy=(ytl + ybr) / 2.0,
+                    width=xbr - xtl,
+                    height=ybr - ytl,
+                )
+            )
 
     return gt
 
 
 # ── Matching: nearest GT → detection ──────────────────────────────────────────
+
 
 def match_detections(
     gt_boxes: List[GTBox],
@@ -101,6 +106,7 @@ def match_detections(
 
 # ── Main evaluation loop ───────────────────────────────────────────────────────
 
+
 def evaluate(
     video_path: str,
     xml_path: str,
@@ -116,8 +122,10 @@ def evaluate(
         sys.exit(1)
 
     total_gt = sum(len(v) for v in gt.values())
-    print(f"Loaded {total_gt} GT boxes across {len(annotated_frames)} frames "
-          f"(frames {annotated_frames[0]}–{annotated_frames[-1]})")
+    print(
+        f"Loaded {total_gt} GT boxes across {len(annotated_frames)} frames "
+        f"(frames {annotated_frames[0]}–{annotated_frames[-1]})"
+    )
 
     detector = CentroidHeadDetector(HSV_PRESETS[preset])
 
@@ -158,7 +166,9 @@ def evaluate(
             continue
 
         gt_boxes = gt[frame_idx]
-        matched, unmatched_gt, unmatched_det = match_detections(gt_boxes, result.detections)
+        matched, unmatched_gt, unmatched_det = match_detections(
+            gt_boxes, result.detections
+        )
 
         for gt_box, det in matched:
             head_hu = max(gt_box.height, 1.0)
@@ -175,12 +185,19 @@ def evaluate(
                 cv2.circle(dbg, (int(gt_box.cx), int(gt_box.cy)), 6, (0, 255, 0), 2)
                 cv2.rectangle(
                     dbg,
-                    (int(gt_box.cx - gt_box.width / 2), int(gt_box.cy - gt_box.height / 2)),
-                    (int(gt_box.cx + gt_box.width / 2), int(gt_box.cy + gt_box.height / 2)),
-                    (0, 255, 0), 1,
+                    (
+                        int(gt_box.cx - gt_box.width / 2),
+                        int(gt_box.cy - gt_box.height / 2),
+                    ),
+                    (
+                        int(gt_box.cx + gt_box.width / 2),
+                        int(gt_box.cy + gt_box.height / 2),
+                    ),
+                    (0, 255, 0),
+                    1,
                 )
             cv2.imshow("Eval  green=GT  yellow=detected", dbg)
-            if cv2.waitKey(30) & 0xFF == ord('q'):
+            if cv2.waitKey(30) & 0xFF == ord("q"):
                 break
 
         frame_idx += 1
@@ -220,13 +237,20 @@ def evaluate(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate CentroidHeadDetector MAE")
-    parser.add_argument("--video",      default="dataset1/output_clip.mp4")
-    parser.add_argument("--xml",        default="dataset1/output_clip.xml")
-    parser.add_argument("--preset",     default="yellow", choices=list(HSV_PRESETS.keys()))
-    parser.add_argument("--max-frames", type=int, default=None,
-                        help="Stop after N frames (quick smoke test)")
-    parser.add_argument("--debug",      action="store_true",
-                        help="Show live debug window (green=GT, yellow=detected)")
+    parser.add_argument("--video", default="dataset1/output_clip.mp4")
+    parser.add_argument("--xml", default="dataset1/output_clip.xml")
+    parser.add_argument("--preset", default="yellow", choices=list(HSV_PRESETS.keys()))
+    parser.add_argument(
+        "--max-frames",
+        type=int,
+        default=None,
+        help="Stop after N frames (quick smoke test)",
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Show live debug window (green=GT, yellow=detected)",
+    )
     args = parser.parse_args()
 
     evaluate(

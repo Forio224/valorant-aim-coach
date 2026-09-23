@@ -73,6 +73,7 @@ class AnalysisSession(SQLModel, table=True):
     coach_errors: Optional[str] = None      # JSON-список ошибок groundedness
     evidence_frames: Optional[str] = None   # JSON-список URL кадров-улик
     external_benchmark: Optional[str] = None  # JSON-снапшот KovaaK's S5
+    stats_path: Optional[str] = None        # лог прогона аим-тренажёра
     error: Optional[str] = None             # причина FAILED
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
@@ -94,11 +95,12 @@ class DatabaseManager:
 
     def create_session(self, video_path: str, *, player_id: str,
                        clip_id: str,
-                       owner_user_id: Optional[UUID] = None) -> AnalysisSession:
+                       owner_user_id: Optional[UUID] = None,
+                       stats_path: Optional[str] = None) -> AnalysisSession:
         with Session(self.engine) as session:
             analysis_session = AnalysisSession(
                 video_path=video_path, player_id=player_id, clip_id=clip_id,
-                owner_user_id=owner_user_id)
+                owner_user_id=owner_user_id, stats_path=stats_path)
             session.add(analysis_session)
             session.commit()
             session.refresh(analysis_session)

@@ -27,6 +27,7 @@ from engine.episodes import HeadsByFrame, segment_episodes
 from engine.evidence_frames import DEFAULT_EVIDENCE_CAP, render_evidence_frames
 from engine.profile_store import (aggregate_profile, build_clip_record,
                                   load_player, save_clip)
+from engine.platform_profile import PlatformProfile, resolve_profile
 from engine.report import build_report
 
 logger = logging.getLogger(__name__)
@@ -40,6 +41,12 @@ DEFAULT_CONF = 0.4            # колено холдаута (FP 16->4, recall 
 DEFAULT_IMGSZ = 1280
 DEFAULT_PROFILE_DIR = "profiles"
 DEFAULT_COACH_MAX_IMAGES = 5  # кап цены VLM; валидатор B2 страхует качество
+DEFAULT_TARGET_COLOUR = "orange"   # типовой цвет целей в тренажёрах
+
+# Платформы, чьи клипы разбираются цветовым детектором, а не YOLO по головам.
+TRAINER_PLATFORMS = ("kovaaks", "aimbeast")
+
+YOLO_SOURCE_NAME = "yolo_heads"
 
 Detector = Callable[[str], HeadsByFrame]
 StatusCallback = Callable[[str], None]
@@ -55,6 +62,7 @@ class PipelineConfig:
     profile_dir: str = DEFAULT_PROFILE_DIR
     evidence_cap: int = DEFAULT_EVIDENCE_CAP
     coach_max_images: int = DEFAULT_COACH_MAX_IMAGES
+    target_colour: str = DEFAULT_TARGET_COLOUR   # пресет цвета целей тренажёра
 
     @classmethod
     def from_env(cls) -> "PipelineConfig":
@@ -63,6 +71,8 @@ class PipelineConfig:
             profile_dir=os.getenv("PROFILE_DIR", DEFAULT_PROFILE_DIR),
             coach_max_images=int(os.getenv("COACH_MAX_IMAGES",
                                            str(DEFAULT_COACH_MAX_IMAGES))),
+            target_colour=os.getenv("TRAINER_TARGET_COLOUR",
+                                    DEFAULT_TARGET_COLOUR),
         )
 
 
@@ -109,6 +119,60 @@ def detect_heads_yolo(video_path: str, config: PipelineConfig) -> HeadsByFrame:
     return heads_by_frame
 
 
+def profile_for(training_platform: Optional[str]) -> PlatformProfile:
+    """Пороги движка под источник клипа; неизвестное — валорантовые."""
+    return resolve_profile(training_platform)
+
+
+def default_detector_for(training_platform: Optional[str],
+                         config: PipelineConfig) -> Detector:
+    """Источник целей по платформе.
+
+    Веса heads_v3 обучены на головах Valorant и на сферах тренажёра не
+    работают, поэтому клип тренажёра по умолчанию идёт в цветовой детектор.
+    Явно переданный `detector` эту логику отменяет — на нём держатся тесты
+    и CLI.
+    """
+    if training_platform in TRAINER_PLATFORMS:
+        from backend.trainer_target_detector import (TargetParams,
+                                                     make_trainer_detector)
+        return make_trainer_detector(
+            TargetParams.from_preset(config.target_colour))
+
+    def yolo_detector(path: str) -> HeadsByFrame:
+        return detect_heads_yolo(path, config)
+    yolo_detector.source = YOLO_SOURCE_NAME
+    return yolo_detector
+
+
+# ── Лог аим-тренажёра: второй источник истины к видео ────────────────────────
+
+def _shots_block(stats_path: Optional[str], ctx, episodes) -> Optional[dict]:
+    """Секция попаданий из лога прогона; None, если логу здесь не место.
+
+    Любая беда с файлом деградирует в блок с причиной, а не в падение
+    сессии: разбор по видео остаётся полезным и без статистики.
+    """
+    if not stats_path or ctx.training_platform not in TRAINER_PLATFORMS:
+        return None
+
+    from engine.metrics.shots import compute_shot_metrics
+    from engine.trainer_stats import TrainerSession, parse_stats
+    from engine.trainer_stats.sync import (SyncResult, estimate_offset,
+                                           target_loss_times)
+    try:
+        session = parse_stats(stats_path, ctx.training_platform)
+        sync = estimate_offset(
+            target_loss_times(episodes, ctx.fps),
+            [e.t_seconds for e in session.events])
+    except Exception as exc:                      # noqa: BLE001 — деградация
+        logger.exception("лог тренажёра не разобран, отдаём разбор без него")
+        session = TrainerSession(platform=ctx.training_platform)
+        sync = SyncResult(None, 0, 0,
+                          f"лог тренажёра не разобран: {exc}")
+    return compute_shot_metrics(session, sync).to_report_block()
+
+
 # ── Коуч (B1+B2), изолированный от пайплайна ─────────────────────────────────
 
 def _run_coach(coach_client, report: dict, frame_paths: Sequence,
@@ -153,7 +217,8 @@ def run_pipeline(video_path: str, player_id: str, *,
                  coach_client=None,
                  history_provider: Optional[Callable] = None,
                  steam_id: Optional[str] = None,
-                 external_fetcher: Optional[Callable] = None
+                 external_fetcher: Optional[Callable] = None,
+                 stats_path: Optional[str] = None
                  ) -> PipelineResult:
     """Полный продуктовый прогон одного клипа одного игрока."""
     cfg = config or PipelineConfig.from_env()
@@ -170,20 +235,25 @@ def run_pipeline(video_path: str, player_id: str, *,
             "не удалось прочитать видео — файл повреждён или это не видео"
         ) from exc
 
+    # Пороги движка зависят от источника клипа: валорантовая калибровка
+    # сферам тренажёра не наследуется (engine/platform_profile.py).
+    profile_thresholds = profile_for(ctx.training_platform)
+    duel_hu = profile_thresholds.duel_hu
+
     notify(STATUS_DETECTING)
-    detect = detector or (lambda path: detect_heads_yolo(path, cfg))
+    detect = detector or default_detector_for(ctx.training_platform, cfg)
     heads_by_frame = detect(str(video_path))
 
     notify(STATUS_MEASURING)
-    episodes = segment_episodes(heads_by_frame, ctx, duel_hu=cfg.duel_hu)
+    episodes = segment_episodes(heads_by_frame, ctx, duel_hu=duel_hu)
     # Фаза 3: атрибуция цели по намерению вместо «ближайшей на каждом кадре» —
     # consistency/bias/профиль кормятся сэмплами с назначенным треком (спорные
     # кадры исключены из механики, но честно посчитаны в consistency).
-    attribution = attribute_targets(episodes, ctx, duel_hu=cfg.duel_hu)
+    attribution = attribute_targets(episodes, ctx, duel_hu=duel_hu)
     samples = [s for s in attribution.samples if s.track_id is not None]
 
     # Продольное накопление ДО отчёта — свежий клип входит в свой же профиль.
-    record = build_clip_record(ctx, samples, episodes, duel_hu=cfg.duel_hu)
+    record = build_clip_record(ctx, samples, episodes, duel_hu=duel_hu)
     save_clip(cfg.profile_dir, ctx, record)
     profile = aggregate_profile(load_player(cfg.profile_dir, ctx.player_id))
 
@@ -205,11 +275,12 @@ def run_pipeline(video_path: str, player_id: str, *,
             logger.exception("внешний ранк KovaaK's не получен")
             external_block, external_reason = None, "api_error"
 
-    report = build_report(ctx, samples, episodes, duel_hu=cfg.duel_hu,
+    report = build_report(ctx, samples, episodes, duel_hu=duel_hu,
                           profile=profile, drill_history=drill_history,
                           attribution=attribution,
                           external_benchmark=external_block,
-                          external_unavailable_reason=external_reason)
+                          external_unavailable_reason=external_reason,
+                          shots=_shots_block(stats_path, ctx, episodes))
     frame_paths = render_evidence_frames(str(video_path), report,
                                          evidence_dir, cap=cfg.evidence_cap)
 
