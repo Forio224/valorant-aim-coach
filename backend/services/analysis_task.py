@@ -9,6 +9,7 @@ YOLO/Redis/сети.
 import json
 import logging
 import uuid
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -99,7 +100,13 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
 
     try:
         session_evidence_dir = str(Path(evidence_dir) / job.session_id)
-        with storage.fetch_video(job.video_path) as local_video:
+        with ExitStack() as files:
+            local_video = files.enter_context(
+                storage.fetch_video(job.video_path))
+            # r2: лог лежит в бакете рядом с клипом, не на диске воркера.
+            local_stats = (files.enter_context(
+                storage.fetch_video(job.stats_path))
+                if job.stats_path else None)
             if validator is not None:
                 validator(local_video)     # мусор/оверлимит — до GPU
             result = pipeline(
@@ -109,7 +116,7 @@ def run_analysis_session(db, job: AnalysisJob, *, evidence_dir: str,
                 training_platform=job.training_platform,
                 evidence_dir=session_evidence_dir, on_status=on_status,
                 history_provider=history_provider, steam_id=job.steam_id,
-                stats_path=job.stats_path,
+                stats_path=local_stats,
                 **pipeline_kwargs)
 
         frame_urls = storage.publish_evidence(job.session_id,

@@ -147,3 +147,30 @@ def test_r2_delete_video(r2):
     storage, client = r2
     storage.delete_video("uploads/k.mp4")
     assert client.deleted == ["uploads/k.mp4"]
+
+
+# ------------------------------------------------------ лог тренажёра
+
+def test_local_publish_stats_keeps_path(tmp_path):
+    """local: воркер живёт на том же диске — путь и есть реф."""
+    stats = tmp_path / "abc-stats.csv"
+    stats.write_bytes(b"csv")
+    assert LocalStorage(str(tmp_path)).publish_stats(str(stats)) == str(stats)
+    assert stats.exists()
+
+
+def test_r2_publish_stats_uploads_under_uploads_prefix(r2, tmp_path):
+    """r2: воркер может жить на другой машине — лог едет в бакет к клипу.
+
+    Префикс uploads/ — чтобы лог подпадал под тот же ретеншн, что и клип.
+    """
+    storage, client = r2
+    stats = tmp_path / "abc-stats.csv"
+    stats.write_bytes(b"csv")
+
+    ref = storage.publish_stats(str(stats))
+
+    assert ref.startswith("uploads/")
+    assert ref.endswith("-stats.csv")
+    assert client.uploaded == [(str(stats), "aim", ref)]
+    assert not stats.exists()                 # диск API не копим

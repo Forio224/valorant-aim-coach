@@ -203,7 +203,7 @@ async def _save_trainer_stats(stats, training_platform: str | None,
     stats_path = os.path.join(UPLOAD_DIR, f"{file_id}-stats{ext}")
     with open(stats_path, "wb") as buffer:
         buffer.write(content)
-    return stats_path
+    return storage.publish_stats(stats_path)
 
 
 async def _create_and_enqueue(background_tasks: BackgroundTasks, *,
@@ -261,8 +261,13 @@ async def start_analysis(request: Request,
                          agent: str | None = Form(None),
                          map_name: str | None = Form(None),
                          training_platform: str | None = Form(None),
-                         steam_id: str | None = Form(None)):
-    """Шаг 2 presigned-флоу: клип уже в бакете — валидируем и запускаем."""
+                         steam_id: str | None = Form(None),
+                         stats: UploadFile | None = File(None)):
+    """Шаг 2 presigned-флоу: клип уже в бакете — валидируем и запускаем.
+
+    Лог тренажёра (килобайты) идёт через API, а не presigned PUT: так он
+    проходит ту же валидацию, что и в прямом пути.
+    """
     enforce_upload_limit(request)
     user = auth.require_user(request)
     _enforce_daily_quota(user)
@@ -282,11 +287,13 @@ async def start_analysis(request: Request,
             detail=f"Файл слишком большой: {size / 1048576:.0f} МБ "
                    f"при лимите {MAX_UPLOAD_MB:.0f} МБ. Обрежьте клип до "
                    f"нужного боя.")
+    stats_path = await _save_trainer_stats(stats, training_platform,
+                                           str(uuid.uuid4()))
     return await _create_and_enqueue(
         background_tasks, video_ref=key, filename=filename,
         player_id=player_id, sens=sens, edpi=edpi, agent=agent,
         map_name=map_name, training_platform=training_platform, user=user,
-        steam_id=steam_id)
+        steam_id=steam_id, stats_path=stats_path)
 
 
 @app.post("/api/v1/analysis/upload")

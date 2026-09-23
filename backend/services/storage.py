@@ -27,7 +27,13 @@ class Storage(Protocol):
         """None — грузить напрямую в API (local); dict {upload_url, key}."""
 
     def fetch_video(self, video_ref: str):
-        """Контекст с локальным путём к клипу (r2 — временный файл)."""
+        """Контекст с локальным путём к клипу (r2 — временный файл).
+
+        Годится для любого рефа из uploads/ — лог тренажёра качается так же.
+        """
+
+    def publish_stats(self, local_path: str) -> str:
+        """Лог тренажёра с диска API -> реф, доступный воркеру."""
 
     def publish_evidence(self, session_id: str,
                          frame_paths: List[str]) -> List[str]:
@@ -55,6 +61,9 @@ class LocalStorage:
     @contextmanager
     def fetch_video(self, video_ref: str) -> Iterator[str]:
         yield video_ref
+
+    def publish_stats(self, local_path: str) -> str:
+        return local_path
 
     def publish_evidence(self, session_id: str,
                          frame_paths: List[str]) -> List[str]:
@@ -99,6 +108,15 @@ class R2Storage:
         finally:
             if os.path.exists(tmp.name):
                 os.remove(tmp.name)
+
+    def publish_stats(self, local_path: str) -> str:
+        # Воркер может жить на другой машине — лог едет в бакет к клипу.
+        # Префикс uploads/ даёт логу тот же ретеншн, что и клипу; имя
+        # локального файла — UUID, исходное имя в ключ не утекает.
+        key = f"{UPLOAD_PREFIX}{Path(local_path).name}"
+        self._client.upload_file(local_path, self._bucket, key)
+        os.remove(local_path)
+        return key
 
     def publish_evidence(self, session_id: str,
                          frame_paths: List[str]) -> List[str]:

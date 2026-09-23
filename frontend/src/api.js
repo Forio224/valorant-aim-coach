@@ -35,7 +35,7 @@ async function uploadDirect({ file, statsFile, ...meta }) {
 }
 
 /** Presigned-загрузка (R2): PUT в бакет мимо API, затем /start. */
-async function uploadPresigned({ file, ...meta }, presign) {
+async function uploadPresigned({ file, statsFile, ...meta }, presign) {
   const put = await fetch(presign.upload_url, { method: 'PUT', body: file });
   if (!put.ok) {
     throw new Error(`хранилище ответило ${put.status} при загрузке клипа`);
@@ -43,6 +43,8 @@ async function uploadPresigned({ file, ...meta }, presign) {
   const form = metaForm(meta);
   form.append('key', presign.key);
   form.append('filename', file.name);
+  // Лог — килобайты: идёт через API, а не в бакет, и валидируется там же.
+  if (statsFile) form.append('stats', statsFile);
   const resp = await fetch(`${API_BASE}/api/v1/analysis/start`, {
     method: 'POST',
     body: form,

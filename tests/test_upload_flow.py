@@ -20,17 +20,38 @@ class FakeR2Storage:
     def __init__(self):
         self.objects = {}          # key -> size
         self.deleted = []
+        self.blobs = {}            # key -> bytes (лог тренажёра в бакете)
+        self.pipeline_stats = []   # что пайплайн прочитал по stats_path
 
     def presign_upload(self, filename: str) -> Optional[dict]:
         return {"upload_url": "https://r2.example/put/abc", "key": "uploads/abc.mp4"}
 
     def fetch_video(self, video_ref):
+        import os
+        import tempfile
         from contextlib import contextmanager
 
         @contextmanager
         def _cm():
-            yield video_ref
+            if video_ref not in self.blobs:
+                yield video_ref
+                return
+            fd, path = tempfile.mkstemp(suffix=os.path.splitext(video_ref)[1])
+            with os.fdopen(fd, "wb") as f:
+                f.write(self.blobs[video_ref])
+            try:
+                yield path
+            finally:
+                os.remove(path)
         return _cm()
+
+    def publish_stats(self, local_path: str) -> str:
+        import os
+        from pathlib import Path
+        key = f"uploads/{Path(local_path).name}"
+        self.blobs[key] = Path(local_path).read_bytes()
+        os.remove(local_path)
+        return key
 
     def publish_evidence(self, session_id: str,
                          frame_paths: List[str]) -> List[str]:
@@ -58,11 +79,14 @@ def api(tmp_path, monkeypatch):
     monkeypatch.setattr(main, "db", db)
     monkeypatch.setattr(main, "storage", storage)
     monkeypatch.setattr(main, "EVIDENCE_DIR", str(tmp_path / "evidence"))
+    monkeypatch.setattr(main, "UPLOAD_DIR", str(tmp_path))
 
     def fake_pipeline(video_path, player_id, *, evidence_dir, on_status=None,
-                      **kwargs):
+                      stats_path=None, **kwargs):
         from pathlib import Path
 
+        storage.pipeline_stats.append(
+            Path(stats_path).read_bytes() if stats_path else None)
         from backend.services.analysis_pipeline import PipelineResult
         frame = Path(evidence_dir) / "frame_000042.jpg"
         frame.parent.mkdir(parents=True, exist_ok=True)
@@ -169,3 +193,45 @@ def test_uploads_direct_mode_with_local_storage(api, monkeypatch, tmp_path):
     resp = client.post("/api/v1/analysis/uploads",
                        data={"filename": "clip3.mp4"})
     assert resp.json() == {"mode": "direct"}
+
+
+# ------------------------------------------- лог тренажёра в presigned-пути
+
+CSV = ("run Stats.csv", b"Kill #,Timestamp\n1,13:37:57.929\n", "text/csv")
+
+
+def _start(client, *, stats=None, platform="kovaaks"):
+    data = {"key": "uploads/abc.mp4", "filename": "clip3.mp4",
+            "player_id": "friend"}
+    if platform:
+        data["training_platform"] = platform
+    files = {"stats": stats} if stats else None
+    return client.post("/api/v1/analysis/start", data=data, files=files)
+
+
+def test_start_delivers_stats_to_pipeline_through_bucket(api):
+    """Лог идёт в бакет, воркер скачивает его оттуда — не с диска API."""
+    client, db, storage = api
+    storage.objects["uploads/abc.mp4"] = 1000
+
+    resp = _start(client, stats=CSV)
+
+    assert resp.status_code == 200
+    [key] = [k for k in storage.blobs if k.endswith("-stats.csv")]
+    assert key.startswith("uploads/")
+    assert storage.pipeline_stats == [CSV[1]]
+
+
+def test_start_without_stats_passes_none(api):
+    client, db, storage = api
+    storage.objects["uploads/abc.mp4"] = 1000
+    assert _start(client).status_code == 200
+    assert storage.pipeline_stats == [None]
+
+
+def test_start_rejects_stats_for_game_clip(api):
+    client, db, storage = api
+    storage.objects["uploads/abc.mp4"] = 1000
+    resp = _start(client, stats=CSV, platform="ingame")
+    assert resp.status_code == 422
+    assert storage.blobs == {}
