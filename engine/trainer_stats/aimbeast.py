@@ -6,11 +6,16 @@ KovaaK's, у Aimbeast он недокументирован и менялся. �
 толерантный: колонки ищутся по синонимам имён, время принимается и в
 секундах, и временем суток, попадание — числом, словом или булевым.
 
-Когда появится реальный файл, правкой должны оказаться списки синонимов
-ниже, а не логика разбора. Если не нашлась даже колонка времени, парсер
+Что известно о настоящих файлах (сентябрь 2026, по разбору в открытом
+KovOBS): Aimbeast пишет `Statistics/<режим>/<сценарий>.json` в UTF-16 с
+BOM — это история ВСЕХ прогонов сценария параллельными массивами
+(`Date`, `Score`, `Accuracy`, `TTK`, ...), моментов выстрелов в нём нет, и
+синхронизировать его с видео нечем. Такой файл распознаётся и отклоняется
+с объяснением; поддержка «только сводки» отложена до реального экспорта. Если не нашлась даже колонка времени, парсер
 падает с сообщением, называющим, чего не хватило: молчаливая пустая сессия
 хуже отказа, потому что выглядит как «прогон не засчитан».
 """
+import codecs
 import csv
 import json
 import os
@@ -121,14 +126,27 @@ def _totals(events: Sequence[ShotEvent],
     }
 
 
+def _encoding_of(path: str) -> str:
+    """Aimbeast пишет UTF-16 с BOM; остальное считаем UTF-8."""
+    with open(path, "rb") as handle:
+        head = handle.read(2)
+    utf16 = head in (codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)
+    return "utf-16" if utf16 else "utf-8-sig"
+
+
 def _read_json(path: str):
-    with open(path, "r", encoding="utf-8-sig") as handle:
+    with open(path, "r", encoding=_encoding_of(path)) as handle:
         return json.load(handle)
 
 
 def _read_csv(path: str) -> List[Dict[str, Any]]:
-    with open(path, "r", encoding="utf-8-sig", newline="") as handle:
+    with open(path, "r", encoding=_encoding_of(path), newline="") as handle:
         return list(csv.DictReader(handle))
+
+
+def _is_scenario_history(summary: Dict[str, Any]) -> bool:
+    """Файл истории сценария: счёт — массив по прогонам, а не число."""
+    return isinstance(summary.get("score"), list)
 
 
 def parse_aimbeast_stats(path: str) -> TrainerSession:
@@ -143,6 +161,12 @@ def parse_aimbeast_stats(path: str) -> TrainerSession:
             rows = payload
         else:
             summary = _normalise_keys(payload)
+            if _is_scenario_history(summary):
+                raise ValueError(
+                    "это файл истории сценария Aimbeast (Statistics/…): в нём "
+                    "итоги всех прогонов без моментов выстрелов, поэтому "
+                    "совместить его с видео нельзя. Разбор пойдёт по видео "
+                    "без секции попаданий")
             rows = (_pick(summary, ("events", "kills", "shots_log", "log"))
                     or [])
     else:

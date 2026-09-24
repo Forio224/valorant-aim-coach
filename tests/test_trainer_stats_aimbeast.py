@@ -128,3 +128,33 @@ def test_unrecognisable_columns_raise_with_actionable_message(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises((FileNotFoundError, ValueError)):
         parse_aimbeast_stats(str(tmp_path / "нет.csv"))
+
+
+# ------------------------------------------- настоящий файл Aimbeast (2026)
+# Aimbeast пишет Statistics/<режим>/<сценарий>.json: UTF-16 с BOM, история
+# ВСЕХ прогонов параллельными массивами, моментов выстрелов нет вовсе
+# (источник: разбор файлов в Bassel-Bakr/KovOBS). Разбирать его пока не
+# умеем, но игрок должен получить объяснение, а не UnicodeDecodeError.
+
+def _write_utf16(tmp_path, payload):
+    path = tmp_path / "1 WALL 6 TARGETS.json"
+    path.write_bytes(json.dumps(payload).encode("utf-16"))
+    return str(path)
+
+
+def test_real_scenario_history_file_gets_explained(tmp_path):
+    path = _write_utf16(tmp_path, {"Date": ["19/9/2026"], "Score": [812.0],
+                                   "Accuracy": [0.81], "TTK": [0.41]})
+    with pytest.raises(ValueError) as err:
+        parse_aimbeast_stats(path)
+    message = str(err.value).lower()
+    assert "codec" not in message
+    assert "моментов выстрелов" in message
+
+
+def test_utf16_event_log_is_still_readable(tmp_path):
+    """Кодировка — не повод отказывать: построчный лог в UTF-16 читаем."""
+    path = _write_utf16(tmp_path, [{"time": 0.5, "hit": 1},
+                                   {"time": 1.2, "hit": 0}])
+    session = parse_aimbeast_stats(path)
+    assert len(session.events) == 2
