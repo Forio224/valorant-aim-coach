@@ -141,3 +141,70 @@ def test_garbage_file_raises_value_error(tmp_path):
 def test_missing_file_raises(tmp_path):
     with pytest.raises((FileNotFoundError, ValueError)):
         parse_kovaaks_csv(str(tmp_path / "нет.csv"))
+
+
+# ------------------------------------------- реальная раскладка файла 2.x
+# Сверено с настоящими логами KovaaK's 2.0.1.2 (публичные прогоны на GitHub):
+# за блоком оружия идёт сводка `Kills:,N` — её заголовок тоже начинается с
+# «kill», и парсер не должен путать её с построчным блоком килов. Строка
+# оружия несёт хвост колонок настроек, концы строк смешаны (\r\n и \n).
+
+REAL_2X = (
+    "Kill #,Timestamp,Bot,Weapon,TTK,Shots,Hits,Accuracy,Damage Done,"
+    "Damage Possible,Efficiency,Cheated\r\n"
+    "1,12:48:58.975,target,BB Gun,0s,1,1,1,1,1,1,false\r\n"
+    "2,12:48:59.762,target,BB Gun,0.291s,2,1,0.5,1,2,0.5,false\r\n"
+    "3,12:49:00.313,target,BB Gun,0s,1,1,1,1,1,1,false\r\n"
+    "\r\n"
+    "Weapon,Shots,Hits,Damage Done,Damage Possible,,Sens Scale,Horiz Sens,"
+    "Vert Sens,FOV,Hide Gun,Crosshair\r\n"
+    "BB Gun,4,3,3.0,4.0,\r\n"
+    "\r\n"
+    "Kills:,3\n"
+    "Deaths:,0\n"
+    "Fight Time:,8.639\n"
+    "Avg TTK:,0.488\n"
+    "Score:,100.192055\n"
+    "Scenario:,1wall6targets TE\n"
+    "Game Version:,2.0.1.2\n"
+    "\r\n"
+    "Input Lag:,0\r\n"
+    "Sens Scale:,Quake/Source\r\n"
+    "Horiz Sens:,1.0\r\n"
+    "FOV:,90.0\r\n"
+)
+
+
+def _write_bytes(tmp_path, text):
+    path = tmp_path / "1wall6targets TE - Challenge - 2020.06.28-12.49.58 Stats.csv"
+    path.write_bytes(text.encode("utf-8"))
+    return str(path)
+
+
+def test_summary_kills_block_does_not_wipe_kill_events(tmp_path):
+    session = parse_kovaaks_csv(_write_bytes(tmp_path, REAL_2X))
+    assert len(session.events) == 3
+    assert session.events[1].ttk == pytest.approx(0.291)
+
+
+def test_summary_block_fields_are_read(tmp_path):
+    session = parse_kovaaks_csv(_write_bytes(tmp_path, REAL_2X))
+    assert session.scenario == "1wall6targets TE"
+    assert session.score == pytest.approx(100.192055)
+    assert session.avg_ttk == pytest.approx(0.488)
+    assert session.sens_scale == "Quake/Source"
+    assert session.fov == pytest.approx(90.0)
+
+
+def test_weapon_row_with_settings_tail_gives_totals(tmp_path):
+    session = parse_kovaaks_csv(_write_bytes(tmp_path, REAL_2X))
+    assert (session.shots, session.hits) == (4, 3)
+
+
+def test_foreign_table_with_kills_column_is_rejected(tmp_path):
+    """Сводная таблица «Kills,Score,Scenario» из чужого скрипта — не лог."""
+    path = tmp_path / "stats.csv"
+    path.write_text("Kills,Score,Scenario\n123,100.2,1wall6targets TE\n",
+                    encoding="utf-8")
+    with pytest.raises(ValueError):
+        parse_kovaaks_csv(str(path))

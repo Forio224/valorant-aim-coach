@@ -87,6 +87,17 @@ def _header_of(block: List[List[str]]) -> str:
     return block[0][0].strip().lower() if block and block[0] else ""
 
 
+def _is_kill_block(block: List[List[str]]) -> bool:
+    """Построчный блок килов: `Kill #,Timestamp,...`.
+
+    Одного префикса «kill» мало: сводка `Kills:,N` в реальных логах идёт
+    после блока килов и затирала бы уже разобранные события.
+    """
+    columns = [cell.strip().lower() for cell in block[0]] if block else []
+    return bool(columns) and columns[0].startswith("kill") \
+        and "timestamp" in columns
+
+
 def _relative_times(clocks: List[float]) -> List[float]:
     """Время суток → секунды от первого события, с учётом перехода за полночь.
 
@@ -185,7 +196,7 @@ def parse_kovaaks_csv(path: str) -> TrainerSession:
 
     for block in blocks:
         header = _header_of(block)
-        if header.startswith("kill"):
+        if _is_kill_block(block):
             events = _parse_kill_block(block)
             recognised = True
         elif header == "weapon":
